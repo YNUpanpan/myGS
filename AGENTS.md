@@ -178,15 +178,57 @@
   - visible：339 张 `*_V.JPG`
   - thermal：339 张 `*_T.JPG`
 
+##### Task 5：GPU COLMAP 重建
+
+- 创建 `scripts/run_colmap.sh`，用于对指定场景独立运行 COLMAP：
+  - `feature_extractor`
+  - `exhaustive_matcher`
+  - `mapper`
+  - `image_undistorter`
+- 更新 `configs/scenes.env`：
+  - `COLMAP_CUDA_DIR=/home/pch/myGS/tools/colmap-3.9.1-cuda`
+  - `COLMAP_BIN=/home/pch/myGS/tools/colmap-3.9.1-cuda/bin/colmap`
+- 已确认系统 `/usr/bin/colmap` 为无 CUDA 版本，因此 Task 5 使用项目内 GPU COLMAP。
+- 已确认项目 COLMAP：
+  - 版本：`COLMAP 3.9.1`
+  - 提交：`e990364`
+  - 构建：`with CUDA`
+- `scripts/run_colmap.sh` 默认启用 GPU SIFT：
+  - `SiftExtraction.use_gpu=1`
+  - `SiftMatching.use_gpu=1`
+- 首次 visible 运行后发现 `image_undistorter` 输出 sparse 模型到 `sparse/` 根目录，而 3DGS 需要 `sparse/0/`。
+- 已修正脚本：在运行前后统一检查并规范化 sparse 结构，将 `cameras.bin`、`images.bin`、`points3D.bin` 放入 `sparse/0/`。
+- 已运行 visible COLMAP：
+  - 输入：`/home/pch/myGS/datasets/uav_3dgs/processed/visible/images`
+  - 输出：`/home/pch/myGS/datasets/uav_3dgs/processed/visible/sparse/0`
+  - 注册图像：`339/339`
+  - 点数：`273725`
+  - 平均重投影误差：`0.869689px`
+  - 最新成功日志：`/home/pch/myGS/logs/20260709-172538-colmap-visible.log`
+  - 完整重建日志：`/home/pch/myGS/logs/20260709-162256-colmap-visible.log`
+- 已运行 thermal COLMAP：
+  - 输入：`/home/pch/myGS/datasets/uav_3dgs/processed/thermal/images`
+  - 输出：`/home/pch/myGS/datasets/uav_3dgs/processed/thermal/sparse/0`
+  - 注册图像：`339/339`
+  - 点数：`151216`
+  - 平均重投影误差：`0.436450px`
+  - 日志：`/home/pch/myGS/logs/20260709-172559-colmap-thermal.log`
+- 已验证两个场景均存在：
+  - `sparse/0/cameras.bin`
+  - `sparse/0/images.bin`
+  - `sparse/0/points3D.bin`
+- 已验证 `scripts/run_colmap.sh` 通过 `bash -n`。
+- 原始数据目录未移动、未删除、未改名。
+
 ##### 当前状态
 
-- 服务器仓库 `/home/pch/myGS` 当前位于 `main...origin/main`，已同步到 GitHub。
-- 当前已完成实施计划 Task 1、Task 2、Task 3、Task 4。
+- 服务器仓库 `/home/pch/myGS` 当前位于 `main...origin/main`，Task 5 代码和记录待提交推送。
+- 当前已完成实施计划 Task 1、Task 2、Task 3、Task 4、Task 5。
 - 原始数据目录未移动、未删除、未改名。
 - 因中途网络 clone 失败留下的 partial 目录保留在 `tools/` 下，并已通过 `.gitignore` 排除，不会提交到 GitHub。
 
 ##### 下一步
 
-- 进入 Task 5：创建并运行 `scripts/run_colmap.sh`。
-- 对 visible 和 thermal 分别独立运行 COLMAP。
-- 验证两个场景均产生 `sparse/0/cameras.bin`、`images.bin` 和 `points3D.bin`。
+- 进入 Task 6：创建并运行 `scripts/run_training.sh`。
+- 对 visible 和 thermal 分别运行 3DGS 训练。
+- 验证两个场景均产生训练输出和可复现实验日志。
