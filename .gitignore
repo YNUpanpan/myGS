@@ -1,0 +1,27 @@
+# Raw and generated data
+datasets/**/raw/
+datasets/**/processed/
+outputs/
+logs/*.log
+
+# Local tools and third-party source checkouts
+tools/miniconda3/
+tools/gaussian-splatting/
+
+# Large model and reconstruction artifacts
+*.pth
+*.pt
+*.ply
+*.bin
+*.db
+*.ckpt
+
+# Python and shell noise
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+
+# Keep documentation placeholders if added later
+!.gitkeep
