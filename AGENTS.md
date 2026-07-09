@@ -96,18 +96,75 @@
 - 用户选择执行方式：Subagent-Driven 或 Inline Execution。
 - 按任务逐步实现脚本并验证。
 
-#### Implementation Progress
+#### 执行进展
 
-- 用户明确选择 Inline Execution，并同意直接在 `/home/pch/myGS` 的 `main` 上实现。
-- Created shared scene configuration and environment check scripts.
-- Verified `scripts/check_environment.sh`: visible `339/339`, thermal `339/339`, two RTX 5090 GPUs visible, `/usr/bin/colmap` and `/usr/bin/git` available.
-- Added project-local Miniconda and CUDA 12.8/PyTorch environment setup scripts.
-- Resolved Conda non-interactive Terms of Service blocker by creating the environment from `conda-forge` with `--override-channels` instead of accepting Anaconda default-channel terms.
-- Added `scripts/pip_ipv4.py` because PyTorch pip installs were choosing unreachable IPv6 routes to the PyTorch CDN.
-- Verified project environment `mygs-3dgs-cu128`: PyTorch `2.11.0+cu128`, CUDA `12.8`, CUDA available, 2 GPUs visible.
-- Added `scripts/install_tmp_torch_wheels.py` as a recovery helper for already-downloaded PyTorch/CUDA wheels.
-- Added `scripts/fetch_3dgs.sh` and fetched official `graphdeco-inria/gaussian-splatting` into `tools/gaussian-splatting`.
-- Used `gitclone.com` only as a transport mirror for the main 3DGS repository and `diff-gaussian-rasterization`; verified checkout HEAD against official GitHub SSH HEAD `54c035f`.
-- Skipped `SIBR_viewers` because it is viewer-only and slow to fetch; fetched training-related submodules `diff-gaussian-rasterization`, `fused-ssim`, and `simple-knn`.
-- Built 3DGS CUDA extensions with `CUDA_HOME=/usr/local/cuda-12.8` to avoid system `nvcc 11.5` mismatch while keeping system CUDA unchanged.
-- Import-tested `diff_gaussian_rasterization`, `simple_knn._C`, and `fused_ssim` in `mygs-3dgs-cu128`; confirmed GPU `NVIDIA GeForce RTX 5090`, PyTorch `2.11.0+cu128`, CUDA `12.8`.
+##### 执行方式
+
+- 用户明确选择 Inline Execution，并同意直接在服务器 `/home/pch/myGS` 的 `main` 分支上实现。
+
+##### Task 1：共享配置与环境检查
+
+- 创建 `configs/scenes.env`，统一记录项目根目录、数据目录、输出目录、日志目录、工具目录、场景名称、文件匹配规则和期望图片数量。
+- 创建 `scripts/common.sh`，提供场景校验、路径解析、图片计数、日志路径和命令检查等公共函数。
+- 创建 `scripts/check_environment.sh`，用于只读检查服务器、GPU、CUDA、COLMAP、Git、数据数量和仓库状态。
+- 已验证 `scripts/check_environment.sh`：
+  - visible 原始图片数量为 `339/339`。
+  - thermal 原始图片数量为 `339/339`。
+  - 服务器可见 2 张 NVIDIA GeForce RTX 5090。
+  - `/usr/bin/colmap` 和 `/usr/bin/git` 可用。
+- 已提交并推送：`2498076 Add environment check scripts`。
+
+##### Task 2：项目 Miniconda 与 CUDA 12.8/PyTorch 环境
+
+- 创建 `scripts/install_miniconda.sh`，在 `/home/pch/myGS/tools/miniconda3` 安装项目专用 Miniconda。
+- 创建 `scripts/setup_3dgs_env.sh`，创建 Conda 环境 `mygs-3dgs-cu128`，安装 Python、PyTorch cu128 和基础依赖。
+- 为解决 Conda 非交互 Terms of Service 阻塞，环境创建改为使用 `conda-forge` 并加 `--override-channels`。
+- 为解决 PyTorch CDN 访问时优先走不可达 IPv6 的问题，新增 `scripts/pip_ipv4.py`，强制 pip 下载走 IPv4 DNS 解析。
+- 新增 `scripts/install_tmp_torch_wheels.py`，作为已下载 PyTorch/CUDA wheel 的恢复安装助手。
+- 已验证项目环境 `mygs-3dgs-cu128`：
+  - PyTorch：`2.11.0+cu128`。
+  - PyTorch CUDA：`12.8`。
+  - `torch.cuda.is_available()` 为 true。
+  - 可见 GPU 数量为 2。
+- 已提交并推送：`8dc4f40 Add project CUDA environment setup`。
+
+##### Task 3：官方 3DGS 源码与 CUDA 扩展
+
+- 创建 `scripts/fetch_3dgs.sh`，用于拉取官方 `graphdeco-inria/gaussian-splatting` 到 `tools/gaussian-splatting`。
+- 服务器直连 GitHub HTTPS 超时，GitHub SSH 可用但完整 clone 速度很慢。
+- 采用镜像时只把镜像作为传输通道，不把镜像作为可信源：
+  - 主仓库和 `diff-gaussian-rasterization` 使用 `gitclone.com` 加速。
+  - `fused-ssim` 在 `gitclone.com` 返回 502，改用 GitHub SSH。
+  - `simple-knn` 使用 Inria GitLab 官方地址。
+  - 最终 checkout HEAD 与官方 GitHub SSH HEAD 校验一致：`54c035f`。
+- 因 `SIBR_viewers` 是 Viewer 子模块，训练基线不依赖它，且 Inria 侧下载慢，所以当前只拉取训练相关子模块：
+  - `submodules/diff-gaussian-rasterization`
+  - `submodules/fused-ssim`
+  - `submodules/simple-knn`
+- 编译 3DGS CUDA 扩展时，PyTorch 最初检测到系统默认 `nvcc 11.5`，与 PyTorch cu128 不匹配。
+- 未切换系统 CUDA；编译命令临时设置 `CUDA_HOME=/usr/local/cuda-12.8` 和 PATH，使扩展使用服务器已有 CUDA 12.8 编译器。
+- 已成功构建并安装：
+  - `diff_gaussian_rasterization`
+  - `simple_knn`
+  - `fused_ssim`
+- 已完成 import 验证：
+  - `diff_gaussian_rasterization` 可导入。
+  - `simple_knn._C` 可导入。
+  - `fused_ssim` 可导入。
+  - GPU 名称：`NVIDIA GeForce RTX 5090`。
+  - PyTorch：`2.11.0+cu128`。
+  - CUDA：`12.8`。
+- 已提交并推送：`0fe832f Add 3DGS source fetch script`。
+
+##### 当前状态
+
+- 服务器仓库 `/home/pch/myGS` 当前位于 `main...origin/main`，已同步到 GitHub。
+- 当前已完成实施计划 Task 1、Task 2、Task 3。
+- 原始数据目录未移动、未删除、未改名。
+- 因中途网络 clone 失败留下的 partial 目录保留在 `tools/` 下，并已通过 `.gitignore` 排除，不会提交到 GitHub。
+
+##### 下一步
+
+- 进入 Task 4：创建并运行 `scripts/prepare_dataset.sh`。
+- 为 visible 和 thermal 分别准备 `datasets/uav_3dgs/processed/<scene>/images`。
+- 仅创建符号链接或必要副本，不修改原始数据目录。
