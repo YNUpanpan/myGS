@@ -156,15 +156,37 @@
   - CUDA：`12.8`。
 - 已提交并推送：`0fe832f Add 3DGS source fetch script`。
 
+##### Task 4：数据准备
+
+- 创建 `scripts/prepare_dataset.sh`，用于为指定场景准备 3DGS/COLMAP 输入图片目录。
+- 脚本执行前会校验原始数据目录存在，并校验原始图片数量是否等于期望数量。
+- 脚本只读取原始数据目录，不移动、不删除、不改名原始图片。
+- 输出目录为：
+  - `/home/pch/myGS/datasets/uav_3dgs/processed/visible/images`
+  - `/home/pch/myGS/datasets/uav_3dgs/processed/thermal/images`
+- 脚本优先创建符号链接；如符号链接不可用，才复制图片到 processed 目录。
+- 已运行 visible 数据准备：
+  - 输出：`Prepared visible: 339/339`
+  - manifest：`/home/pch/myGS/datasets/uav_3dgs/processed/visible/manifest.txt`
+- 已运行 thermal 数据准备：
+  - 输出：`Prepared thermal: 339/339`
+  - manifest：`/home/pch/myGS/datasets/uav_3dgs/processed/thermal/manifest.txt`
+- 已验证 manifest：
+  - visible：`scene=visible`，`prepared_count=339`
+  - thermal：`scene=thermal`，`prepared_count=339`
+- 已验证 processed images 实际数量：
+  - visible：339 张 `*_V.JPG`
+  - thermal：339 张 `*_T.JPG`
+
 ##### 当前状态
 
 - 服务器仓库 `/home/pch/myGS` 当前位于 `main...origin/main`，已同步到 GitHub。
-- 当前已完成实施计划 Task 1、Task 2、Task 3。
+- 当前已完成实施计划 Task 1、Task 2、Task 3、Task 4。
 - 原始数据目录未移动、未删除、未改名。
 - 因中途网络 clone 失败留下的 partial 目录保留在 `tools/` 下，并已通过 `.gitignore` 排除，不会提交到 GitHub。
 
 ##### 下一步
 
-- 进入 Task 4：创建并运行 `scripts/prepare_dataset.sh`。
-- 为 visible 和 thermal 分别准备 `datasets/uav_3dgs/processed/<scene>/images`。
-- 仅创建符号链接或必要副本，不修改原始数据目录。
+- 进入 Task 5：创建并运行 `scripts/run_colmap.sh`。
+- 对 visible 和 thermal 分别独立运行 COLMAP。
+- 验证两个场景均产生 `sparse/0/cameras.bin`、`images.bin` 和 `points3D.bin`。
