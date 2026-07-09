@@ -101,3 +101,8 @@
 - 用户明确选择 Inline Execution，并同意直接在 `/home/pch/myGS` 的 `main` 上实现。
 - Created shared scene configuration and environment check scripts.
 - Verified `scripts/check_environment.sh`: visible `339/339`, thermal `339/339`, two RTX 5090 GPUs visible, `/usr/bin/colmap` and `/usr/bin/git` available.
+- Added project-local Miniconda and CUDA 12.8/PyTorch environment setup scripts.
+- Resolved Conda non-interactive Terms of Service blocker by creating the environment from `conda-forge` with `--override-channels` instead of accepting Anaconda default-channel terms.
+- Added `scripts/pip_ipv4.py` because PyTorch pip installs were choosing unreachable IPv6 routes to the PyTorch CDN.
+- Verified project environment `mygs-3dgs-cu128`: PyTorch `2.11.0+cu128`, CUDA `12.8`, CUDA available, 2 GPUs visible.
+- Added `scripts/install_tmp_torch_wheels.py` as a recovery helper for already-downloaded PyTorch/CUDA wheels.

@@ -7,6 +7,7 @@ logs/*.log
 # Local tools and third-party source checkouts
 tools/miniconda3/
 tools/gaussian-splatting/
+tools/Miniconda3-*.sh
 
 # Large model and reconstruction artifacts
 *.pth
