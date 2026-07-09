@@ -106,3 +106,8 @@
 - Added `scripts/pip_ipv4.py` because PyTorch pip installs were choosing unreachable IPv6 routes to the PyTorch CDN.
 - Verified project environment `mygs-3dgs-cu128`: PyTorch `2.11.0+cu128`, CUDA `12.8`, CUDA available, 2 GPUs visible.
 - Added `scripts/install_tmp_torch_wheels.py` as a recovery helper for already-downloaded PyTorch/CUDA wheels.
+- Added `scripts/fetch_3dgs.sh` and fetched official `graphdeco-inria/gaussian-splatting` into `tools/gaussian-splatting`.
+- Used `gitclone.com` only as a transport mirror for the main 3DGS repository and `diff-gaussian-rasterization`; verified checkout HEAD against official GitHub SSH HEAD `54c035f`.
+- Skipped `SIBR_viewers` because it is viewer-only and slow to fetch; fetched training-related submodules `diff-gaussian-rasterization`, `fused-ssim`, and `simple-knn`.
+- Built 3DGS CUDA extensions with `CUDA_HOME=/usr/local/cuda-12.8` to avoid system `nvcc 11.5` mismatch while keeping system CUDA unchanged.
+- Import-tested `diff_gaussian_rasterization`, `simple_knn._C`, and `fused_ssim` in `mygs-3dgs-cu128`; confirmed GPU `NVIDIA GeForce RTX 5090`, PyTorch `2.11.0+cu128`, CUDA `12.8`.
