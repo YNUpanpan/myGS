@@ -95,3 +95,9 @@
 
 - 用户选择执行方式：Subagent-Driven 或 Inline Execution。
 - 按任务逐步实现脚本并验证。
+
+#### Implementation Progress
+
+- 用户明确选择 Inline Execution，并同意直接在 `/home/pch/myGS` 的 `main` 上实现。
+- Created shared scene configuration and environment check scripts.
+- Verified `scripts/check_environment.sh`: visible `339/339`, thermal `339/339`, two RTX 5090 GPUs visible, `/usr/bin/colmap` and `/usr/bin/git` available.

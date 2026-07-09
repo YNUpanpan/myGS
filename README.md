@@ -19,3 +19,21 @@ This project prepares a reproducible baseline for reconstructing UAV visible-lig
 - Exclude raw images, processed COLMAP data, training outputs, models, and large artifacts from git.
 
 See `AGENTS.md` and `docs/superpowers/specs/2026-07-09-uav-3dgs-baseline-design.md` for the confirmed design and task log.
+
+## Baseline Commands
+
+Run from `/home/pch/myGS`:
+
+```bash
+bash scripts/check_environment.sh
+bash scripts/install_miniconda.sh
+bash scripts/setup_3dgs_env.sh
+bash scripts/fetch_3dgs.sh
+bash scripts/prepare_dataset.sh visible
+bash scripts/run_colmap.sh visible
+bash scripts/run_train.sh visible
+bash scripts/prepare_dataset.sh thermal
+bash scripts/run_colmap.sh thermal
+bash scripts/run_train.sh thermal
+bash scripts/summarize_runs.sh
+```
