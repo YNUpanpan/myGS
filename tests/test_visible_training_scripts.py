@@ -20,12 +20,15 @@ def test_runner_contract_and_syntax():
         "--eval",
         "--disable_viewer",
         "--checkpoint_iterations",
-        "nohup",
-        "setsid",
+        "foreground-ssh",
+        "train.session",
         "finalize-exit",
         'mode="${1:-}"',
     ):
         assert required in text
+    assert "printf -v worker_command" not in text
+    assert "tmux new-session" not in text
+    assert "nohup" not in text
     subprocess.run(["bash", "-n", str(RUNNER)], check=True)
 
 

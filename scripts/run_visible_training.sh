@@ -109,16 +109,22 @@ worker() {
 
 launch() {
   local output_dir="$1" log_file="$2" iterations="$3" eval_csv="$4" checkpoint="${5:-}"
-  local worker_pid
+  local rc
   mkdir -p "${output_dir}" "${LOG_ROOT}"
-  nohup setsid bash "$0" _worker "${output_dir}" "${log_file}" "${iterations}" "${eval_csv}" "${checkpoint}" \
-    >"${log_file}" 2>&1 </dev/null &
-  worker_pid=$!
-  echo "${worker_pid}" >"${output_dir}/train.pid"
+  touch "${log_file}"
+  echo "$$" >"${output_dir}/train.pid"
+  echo "foreground-ssh" >"${output_dir}/train.session"
   echo "run_id=$(basename "${output_dir}")"
   echo "output_dir=${output_dir}"
   echo "log_file=${log_file}"
-  echo "pid=${worker_pid}"
+  echo "pid=$$"
+  echo "execution_mode=foreground-ssh"
+
+  set +e
+  worker "${output_dir}" "${log_file}" "${iterations}" "${eval_csv}" "${checkpoint}" >>"${log_file}" 2>&1
+  rc=$?
+  set -e
+  return "${rc}"
 }
 
 new_run() {
@@ -163,7 +169,8 @@ mode="${1:-}"
 case "${mode}" in
   _worker)
     shift
-    worker "$@"
+    worker_log="${2:?missing worker log path}"
+    worker "$@" >>"${worker_log}" 2>&1
     ;;
   smoke|start)
     ensure_no_active_visible_run

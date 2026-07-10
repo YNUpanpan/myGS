@@ -305,20 +305,40 @@
 - visible 的 339 张图像会固定划分为 296 张训练图和 43 张测试图。
 - 官方指标代码支持 PSNR、SSIM 和 LPIPS；LPIPS VGG 权重需要在正式训练前预检和缓存。
 - 服务器两张 RTX 5090 当前探查时均为空闲。
+- 服务器会在 SSH 断开时清理整个会话 cgroup；`nohup`、`setsid`、`tmux` 均无法跨断线保留训练进程。
+- 服务器没有可用的 user systemd、无交互 sudo 或 atd，因此本次训练使用受控前台 SSH 会话，并通过独立只读连接监控。
+- LPIPS VGG 主干权重已通过 IPv4 从 PyTorch 官方地址下载并校验 SHA-256 前缀 `397923af`。
+- LPIPS 线性权重来自官方 GitHub SSH 仓库 `richzhang/PerceptualSimilarity`，checkout 提交为 `082bb24f84c091ea94de2867d34c4544f68e0963`。
 
 #### 已完成
 
 - 澄清并确认 visible 单场景、单 GPU、15000 步上限和同步质量早停设计。
 - 创建规格文档：`docs/superpowers/specs/2026-07-10-visible-3dgs-monitored-training-design.md`。
+- 创建实施计划：`docs/superpowers/plans/2026-07-10-visible-3dgs-monitored-training-implementation.md`。
+- 按测试驱动方式实现：
+  - `scripts/visible_training_monitor.py`
+  - `patches/gaussian-splatting/visible-monitored-training.patch`
+  - `scripts/run_visible_training.sh`
+  - `scripts/monitor_visible_training.sh`
+  - 对应自动化测试
+- 自动化回归验证：`15 passed`；Python 编译和 Bash 语法检查通过。
+- 已完成成功 smoke run：
+  - 运行目录：`/home/pch/myGS/outputs/visible/smoke-20260710-081201`
+  - 日志：`/home/pch/myGS/logs/20260710-081201-train-visible.log`
+  - 终止状态：`completed`
+  - 10 步：PSNR `12.8568142`，SSIM `0.3359472`，LPIPS `0.6690347`
+  - 20 步：PSNR `13.2950412`，SSIM `0.3419230`，LPIPS `0.6621497`
+  - 最佳迭代：20
+  - 10/20 步均产生 checkpoint、point cloud 和 5 组固定视角 render/GT。
+- visible 原始图数量复核仍为 `339`，原始数据未移动、删除、改名或修改。
 
 #### 待执行
 
-- 用户审阅本次独立规格文档。
-- 审阅通过后编写独立实施计划。
-- 按测试驱动方式实现训练监控、质量评估和早停脚本。
-- 完成预检和 smoke run 后启动 visible 正式训练，并持续报告进度。
+- 提交并推送 smoke 修复、前台会话约束、测试和本次任务记录。
+- 启动 visible 正式训练并持续报告进度。
+- 从 5000 步开始，每 1000 步核对指标和早停判据，最多到 15000 步。
 
 #### 下一步
 
-- 提交并推送规格文档和本次 `AGENTS.md` 任务记录。
-- 请用户审阅规格文档；确认后进入实施计划。
+- 完成正式训练前的最终验证和 Git 提交。
+- 使用受控前台 SSH 会话启动 visible 正式训练并实时监控。

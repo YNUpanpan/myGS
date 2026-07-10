@@ -77,20 +77,20 @@
 - `point_cloud/iteration_<N>/point_cloud.ply`：官方点云输出。
 - `chkpnt<N>.pth`：可恢复训练的 checkpoint。
 - `evaluation/iteration_<N>/`：固定测试视角的渲染图和对应真值图。
-- `train.pid`：持久训练进程 PID。
+- `train.pid`：当前受控前台训练进程 PID。
 
 完整控制台日志位于：
 
 `/home/pch/myGS/logs/<timestamp>-train-visible.log`
 
-训练以服务器持久进程运行。SSH 会话中断不会终止训练；后续通过 `status.json`、`metrics.csv`、日志和 PID 检查运行状态。状态文件采用临时文件加原子替换方式刷新，避免读取到半写入 JSON。
+服务器实测会在 SSH 断开时清理整个会话 cgroup，且没有可用的 user systemd、无交互 sudo 或 atd，因此 `nohup`、`setsid`、`tmux` 均无法实现断线后继续。本任务改为保持一条受控前台 SSH 会话运行训练，并通过独立只读连接读取 `status.json`、`metrics.csv`、日志和 PID。状态文件采用临时文件加原子替换方式刷新，避免读取到半写入 JSON；若前台会话意外中断，则从最后有效 checkpoint 安全续训。
 
 ## 代码与工程边界
 
 计划新增或修改的工程文件：
 
 - `patches/gaussian-splatting/visible-monitored-training.patch`：针对 `54c035f` 的最小监控补丁。
-- `scripts/run_visible_training.sh`：预检、补丁校验、持久启动和输出路径管理。
+- `scripts/run_visible_training.sh`：预检、补丁校验、受控前台启动、输出路径管理和安全续训。
 - `scripts/monitor_visible_training.sh`：只读显示当前状态、最新指标、GPU 使用率和日志尾部。
 - `tests/test_visible_early_stop.py`：质量阈值、最佳迭代和状态输出的自动化测试。
 - `.gitignore`：排除项目工具、模型、渲染和运行状态产物。

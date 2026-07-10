@@ -15,5 +15,6 @@ def test_patch_contains_required_monitor_hooks():
     assert "from visible_training_monitor import VisibleTrainingMonitor" in text
     assert "monitor.update_progress" in text
     assert "monitor.evaluate" in text
+    assert "(scene.gaussians, pipe, background" in text
     assert 'monitor.finalize("early_stopped"' in text
     assert 'monitor.finalize("completed"' in text

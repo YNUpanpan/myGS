@@ -38,7 +38,7 @@ diff --git a/train.py b/train.py
 +                    iteration,
 +                    scene.getTestCameras(),
 +                    render,
-+                    (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp),
++                    (scene.gaussians, pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp),
 +                    dataset.train_test_exp,
 +                )
              if (iteration in saving_iterations):

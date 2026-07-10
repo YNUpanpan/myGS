@@ -4,7 +4,7 @@
 
 **目标：** 仅在 GPU 0 上训练 visible 场景，最多训练 15000 步；从 5000 步开始每 1000 步同步评估固定的 43 张测试图，提供实时进度，并在已确认的质量下降判据触发时精确停止在检查点。
 
-**架构：** 官方 3DGS checkout 固定为 `54c035f`。将可复用的进度监控、指标历史、原子状态输出和早停逻辑放入受 Git 跟踪的 Python 模块，再通过一个受跟踪的最小补丁从官方连续训练循环调用该模块。Bash 启动脚本负责全部预检并启动持久工作进程，独立的只读监控脚本负责报告状态，不控制或删除运行结果。
+**架构：** 官方 3DGS checkout 固定为 `54c035f`。将可复用的进度监控、指标历史、原子状态输出和早停逻辑放入受 Git 跟踪的 Python 模块，再通过一个受跟踪的最小补丁从官方连续训练循环调用该模块。服务器实测会在 SSH 断开时清理整个会话 cgroup，因此 Bash 启动脚本在一条受控前台 SSH 会话中执行训练，独立的只读监控脚本通过其他连接报告状态，不控制或删除运行结果。
 
 **技术栈：** Bash、Python 3、dataclasses、JSON/CSV、PyTorch cu128、torchvision、官方 3DGS 渲染器、LPIPS VGG、pytest/unittest、Git、Ubuntu、NVIDIA RTX 5090。
 
@@ -29,7 +29,7 @@
 - 创建 `scripts/visible_training_monitor.py`：负责纯阈值逻辑、最佳检查点选择、原子状态文件、CSV 历史、GPU 评估、固定视角渲染保存和 CLI 收尾。
 - 创建 `tests/test_visible_training_monitor.py`：为阈值、最佳结果选择、原子状态、CSV 历史和终止状态保留提供确定性单元测试。
 - 创建 `patches/gaussian-splatting/visible-monitored-training.patch`：为进度更新、同步评估、早停和终止状态增加最小钩子。
-- 创建 `scripts/run_visible_training.sh`：负责预检、补丁验证/应用、LPIPS 缓存检查、正式/smoke 启动、持久运行和续训校验。
+- 创建 `scripts/run_visible_training.sh`：负责预检、补丁验证/应用、LPIPS 缓存检查、正式/smoke 前台启动和续训校验。
 - 创建 `scripts/monitor_visible_training.sh`：只读显示最近运行的状态、指标、PID、GPU 和日志。
 - 修改 `.gitignore`：忽略全部项目本地工具和生成的运行状态，但不删除它们。
 - 修改 `AGENTS.md`：在对话 4 下追加实施、smoke run、实时运行和最终结果证据。
@@ -414,7 +414,7 @@ git push
 
 ---
 
-### 任务 4：持久启动脚本与只读监控脚本
+### 任务 4：受控前台启动脚本与只读监控脚本
 
 **文件：**
 - 创建：`/home/pch/myGS/scripts/run_visible_training.sh`
@@ -478,9 +478,9 @@ eval_iterations=(10 20)
 
 两种模式都传入 `--eval`、`--disable_viewer`、`--test_iterations $((iterations + 1))`，并使用相同的保存与 checkpoint 迭代数组。smoke run 的阈值和输出不得修改正式运行默认值。
 
-- [ ] **步骤 3：增加持久执行与退出状态收尾**
+- [ ] **步骤 3：增加受控前台执行与退出状态收尾**
 
-使用 `nohup setsid` 启动工作进程，并设置 `CUDA_VISIBLE_DEVICES=0`、`PYTHONPATH=/home/pch/myGS/scripts`、`MYGS_MONITOR_DIR`、`MYGS_EVAL_ITERATIONS` 和 `MYGS_TRAIN_PID`。将 stdout/stderr 重定向到同一个日志，只把准确的启动 PID 写入 `train.pid`。Python 退出后，用其退出码调用 `finalize-exit`。
+设置 `CUDA_VISIBLE_DEVICES=0`、`PYTHONPATH=/home/pch/myGS/scripts`、`MYGS_MONITOR_DIR`、`MYGS_EVAL_ITERATIONS` 和 `MYGS_TRAIN_PID`，在当前受控 SSH 会话中以前台方式执行 worker。将 stdout/stderr 写入同一个明确日志，把准确 PID 写入 `train.pid`，并在 `train.session` 中记录 `foreground-ssh`。Python 退出后，用其退出码调用 `finalize-exit`。服务器已验证会清理断开 SSH 的整个 cgroup，因此不得伪装成 `nohup`、`setsid` 或 `tmux` 持久运行。
 
 - [ ] **步骤 4：增加安全续训校验**
 
@@ -689,7 +689,7 @@ git push
 
 - 仅 visible、GPU 0、15000 步上限、`--eval`、296/43 划分和固定检查点由全局约束及任务 3–6 覆盖。
 - PSNR/SSIM/LPIPS、固定渲染图、精确早停、最佳 checkpoint 和保留输出由任务 1–3、6 覆盖。
-- 实时状态、持久运行、PID、日志、失败状态和安全续训由任务 2、4 覆盖。
+- 实时状态、受控前台会话、PID、日志、失败状态和安全续训由任务 2、4 覆盖。
 - LPIPS 预检以及正式训练前必须 smoke run 的要求由任务 5 覆盖。
 - Git/数据/删除边界和独立对话 4 日志贯穿全文，并由任务 4–6 落实。
 
