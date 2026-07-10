@@ -374,3 +374,48 @@
 #### 下一步
 
 - 本次 visible 独立训练任务完成后，由用户决定是否另开任务评估渲染效果或启动 thermal 训练。
+
+### 2026-07-10 对话 5：最佳 PLY 本地同步用于 SuperSplat 验证
+
+#### 目标
+
+- 每次 3DGS 训练结束后，将质量最高迭代对应的 `point_cloud.ply` 同步到本地目录，方便用户在 SuperSplat 中手动验证效果。
+- 本地交付目录固定为 `F:\PCH\myGSproj\supersplat_ply\`。
+- 本次先同步 visible 正式训练 `20260710-082237` 的最佳 PLY。
+
+#### 已确认决策
+
+- 质量最高迭代以训练输出目录中的 `summary.json` 为准，读取其中的 `best_iteration` 和 `best_metrics`。
+- 本地文件名包含场景、运行编号、最佳迭代和核心指标，便于区分多次训练结果。
+- `.ply` 文件属于大体积验证交付物，不纳入 Git；`supersplat_ply/` 保持为本地目录。
+- 不删除、不移动、不改名远端训练输出和原始数据。
+
+#### 只读探查结果
+
+- visible 正式训练 `summary.json` 显示：
+  - `best_iteration=15000`
+  - PSNR `29.488691729168558`
+  - SSIM `0.9286100656487221`
+  - LPIPS `0.11114280185727186`
+- 最佳远端 PLY 路径为：
+  - `/home/pch/myGS/outputs/visible/20260710-082237/point_cloud/iteration_15000/point_cloud.ply`
+
+#### 已完成
+
+- 创建同步脚本：`scripts/sync_best_ply.py`。
+- 创建自动化测试：`tests/test_sync_best_ply.py`。
+- 更新 `.gitignore`，明确忽略本地 `supersplat_ply/` 目录。
+- 已将本次 visible 最佳 PLY 同步到本地：
+  - `F:\PCH\myGSproj\supersplat_ply\visible_20260710-082237_best_iter15000_psnr29.4887_ssim0.9286_lpips0.1111.ply`
+- 已验证本地文件：
+  - 文件大小：`1004521316` 字节
+  - 与远端文件大小一致
+  - 文件头为 `ply`
+
+#### 待执行
+
+- 将同步脚本、测试、`.gitignore` 和本次中文任务日志同步到服务器仓库并提交推送。
+
+#### 下一步
+
+- 以后每次训练结束后，运行 `scripts/sync_best_ply.py --run-id <运行编号>`，把最佳 PLY 拉到本地 `supersplat_ply/` 后再进行 SuperSplat 验证。

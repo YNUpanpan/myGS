@@ -3,6 +3,7 @@ datasets/**/raw/
 datasets/**/processed/
 outputs/
 logs/*.log
+supersplat_ply/
 
 # Local tools and third-party source checkouts
 tools/
