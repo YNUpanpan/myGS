@@ -1,0 +1,66 @@
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -21,5 +21,6 @@ from utils.image_utils import psnr
+ from argparse import ArgumentParser, Namespace
+ from arguments import ModelParams, PipelineParams, OptimizationParams
++from visible_training_monitor import VisibleTrainingMonitor
+ try:
+     from torch.utils.tensorboard import SummaryWriter
+     TENSORBOARD_FOUND = True
+@@ -51,6 +52,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
+         (model_params, first_iter) = torch.load(checkpoint)
+         gaussians.restore(model_params, opt)
+ 
++    monitor = VisibleTrainingMonitor.from_environment(scene.model_path, opt.iterations)
++    last_iteration = first_iter
++
+     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+ 
+@@ -153,6 +157,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
+             ema_Ll1depth_for_log = 0.4 * Ll1depth + 0.6 * ema_Ll1depth_for_log
+ 
+             if iteration % 10 == 0:
++                last_iteration = iteration
++                monitor.update_progress(iteration, ema_loss_for_log)
+                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
+                 progress_bar.update(10)
+             if iteration == opt.iterations:
+@@ -160,10 +166,27 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
+ 
+             # Log and save
+             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
++            stop_requested = False
++            if iteration in monitor.eval_iterations:
++                last_iteration = iteration
++                stop_requested = monitor.evaluate(
++                    iteration,
++                    scene.getTestCameras(),
++                    render,
++                    (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp),
++                    dataset.train_test_exp,
++                )
+             if (iteration in saving_iterations):
+                 print("\n[ITER {}] Saving Gaussians".format(iteration))
+                 scene.save(iteration)
+ 
++            if stop_requested:
++                print("\n[ITER {}] Saving Early-Stop Checkpoint".format(iteration))
++                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
++                monitor.finalize("early_stopped", iteration, "quality_drop")
++                progress_bar.close()
++                return
++
+             # Densification
+             if iteration < opt.densify_until_iter:
+                 # Keep track of max radii in image-space for pruning
+@@ -190,6 +212,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
+                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
+                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+ 
++    monitor.finalize("completed", last_iteration, "max_iterations")
++
+ def prepare_output_and_logger(args):    
+     if not args.model_path:
+         if os.getenv('OAR_JOB_ID'):
