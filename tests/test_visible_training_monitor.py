@@ -65,3 +65,46 @@ def test_atomic_json_and_metric_csv(tmp_path):
         rows = list(csv.DictReader(stream))
     assert [int(row["iteration"]) for row in rows] == [5000, 6000]
     assert [int(row["quality_dropped"]) for row in rows] == [0, 1]
+
+
+def test_lifecycle_records_drop_and_best_iteration(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYGS_MONITOR_DIR", str(tmp_path))
+    monkeypatch.setenv("MYGS_EVAL_ITERATIONS", "5000,6000")
+    monkeypatch.setenv("MYGS_TRAIN_PID", "12345")
+    instance = monitor.VisibleTrainingMonitor.from_environment(tmp_path, 15000)
+    instance.update_progress(10, 0.5)
+    assert instance.record_metric(rec(5000, 25.0, 0.800, 0.200)) is False
+    assert instance.record_metric(rec(6000, 24.9, 0.798, 0.202)) is True
+    instance.finalize("early_stopped", 6000, "quality_drop")
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["best_iteration"] == 5000
+    assert summary["last_iteration"] == 6000
+    assert summary["state"] == "early_stopped"
+
+
+def test_finalize_exit_preserves_terminal_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYGS_MONITOR_DIR", str(tmp_path))
+    monkeypatch.setenv("MYGS_EVAL_ITERATIONS", "5000")
+    instance = monitor.VisibleTrainingMonitor.from_environment(tmp_path, 5000)
+    instance.record_metric(rec(5000, 25.0, 0.800, 0.200))
+    instance.finalize("completed", 5000, "max_iterations")
+    monitor.finalize_process_exit(tmp_path, 1)
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["state"] == "completed"
+    assert summary["reason"] == "max_iterations"
+
+
+def test_evaluate_records_backend_result(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYGS_MONITOR_DIR", str(tmp_path))
+    monkeypatch.setenv("MYGS_EVAL_ITERATIONS", "5000,6000")
+    instance = monitor.VisibleTrainingMonitor.from_environment(tmp_path, 6000)
+    expected = rec(5000, 25.0, 0.800, 0.200)
+    monkeypatch.setattr(instance, "_evaluate_cameras", lambda *args: expected)
+
+    stopped = instance.evaluate(5000, [object()], object(), (), False)
+
+    assert stopped is False
+    assert instance.records == [expected]
+    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert status["phase"] == "evaluating"
+    assert status["iteration"] == 5000
