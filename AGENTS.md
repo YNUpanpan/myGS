@@ -506,3 +506,103 @@
 
 - 如果 SuperSplat 视觉效果明显提升，将 `resolution=2 + 30000` 作为 visible 当前最佳基线。
 - 如果周边建筑仍明显糊散，下一步应补拍问题建筑周边多角度/多高度航线；仅继续调训练参数的收益会有限。
+
+### 2026-07-10 对话 7：Thermal 3DGS 监控训练与最佳 PLY 同步
+
+#### 目标
+
+- 阅读 `AGENTS.md` 和前面对话记录，确认当前任务后继续执行。
+- 启动红外 thermal 场景的 3DGS 训练。
+- 复用 visible 监控训练逻辑，记录 PSNR、SSIM、LPIPS 和固定测试视角渲染。
+- 训练结束后将最佳迭代 `point_cloud.ply` 同步到本地 `F:\PCH\myGSproj\supersplat_ply\` 供 SuperSplat 验证。
+
+#### 已确认决策
+
+- thermal 本次先跑标准 15000 步受控训练，不使用 visible highres 入口。
+- 使用 GPU 0，单卡训练，GPU 1 不参与本次训练。
+- 使用官方 `--eval` 固定划分，339 张图按每 8 张取 1 张测试图。
+- 评估检查点为 5000、6000、7000、8000、9000、10000、11000、12000、13000、14000、15000。
+- 早停判据沿用 visible：相对上一个检查点，PSNR 下降超过 `0.05 dB`，且 SSIM 下降超过 `0.001` 或 LPIPS 上升超过 `0.001`。
+- 不删除、不移动、不改名原始数据和既有训练输出。
+
+#### 只读探查结果
+
+- 服务器仓库 `main...origin/main` 对齐；仍存在历史未跟踪条目 `" "`，本次不处理。
+- thermal processed 图像数量为 `339`。
+- thermal COLMAP 输入已存在：
+  - `/home/pch/myGS/datasets/uav_3dgs/processed/thermal/sparse/0/cameras.bin`
+  - `/home/pch/myGS/datasets/uav_3dgs/processed/thermal/sparse/0/images.bin`
+  - `/home/pch/myGS/datasets/uav_3dgs/processed/thermal/sparse/0/points3D.bin`
+- 启动前两张 RTX 5090 均为空闲。
+- 本地 Python 子进程运行 `scripts/sync_best_ply.py` 时解析不到 `pch-5090`，原因是落到 `CodexSandboxOffline` SSH 环境；改用已授权的提升权限 `scp` 完成最佳 PLY 同步。
+
+#### 已完成
+
+- 以测试驱动方式新增 thermal 训练入口测试：
+  - `tests/test_visible_training_scripts.py`
+- 新增 thermal 训练脚本：
+  - `scripts/run_thermal_training.sh`
+- 新增 thermal 监控脚本：
+  - `scripts/monitor_thermal_training.sh`
+- 脚本复用现有监控模块和 patch：
+  - `scripts/visible_training_monitor.py`
+  - `patches/gaussian-splatting/visible-monitored-training.patch`
+- 自动化验证：
+  - 新增测试先红灯：`2 failed, 5 passed`
+  - thermal 脚本补齐后：`7 passed`
+  - 相关训练、监控、patch、同步测试：`22 passed`
+- thermal smoke run 已完成：
+  - run id：`smoke-20260710-121323`
+  - 输出目录：`/home/pch/myGS/outputs/thermal/smoke-20260710-121323`
+  - 日志：`/home/pch/myGS/logs/20260710-121323-train-thermal.log`
+  - 最终状态：`completed`
+  - 最佳迭代：20
+  - 10 步：PSNR `12.8968238`，SSIM `0.2531173`，LPIPS `0.6448272`
+  - 20 步：PSNR `12.9541391`，SSIM `0.2605088`，LPIPS `0.6440378`
+  - 已验证产生 2 个 checkpoint、2 组 point cloud、2 个评估目录和 20 张 render/GT 图。
+- thermal 正式训练已完成：
+  - run id：`20260710-121442`
+  - 输出目录：`/home/pch/myGS/outputs/thermal/20260710-121442`
+  - 日志：`/home/pch/myGS/logs/20260710-121442-train-thermal.log`
+  - 最终状态：`completed`
+  - 终止原因：`max_iterations`
+  - 最终迭代：15000
+  - 最佳迭代：15000
+- 正式训练质量记录如下，`quality_dropped` 均为 `0`：
+
+  | 迭代 | PSNR (dB) | SSIM | LPIPS |
+  | ---: | ---: | ---: | ---: |
+  | 5000 | 28.866053 | 0.918214 | 0.112638 |
+  | 6000 | 28.876692 | 0.921863 | 0.109025 |
+  | 7000 | 29.258320 | 0.927415 | 0.105139 |
+  | 8000 | 29.559523 | 0.930514 | 0.100782 |
+  | 9000 | 29.765564 | 0.933958 | 0.097774 |
+  | 10000 | 29.745403 | 0.933801 | 0.098084 |
+  | 11000 | 30.000674 | 0.936821 | 0.094752 |
+  | 12000 | 30.051406 | 0.938398 | 0.093294 |
+  | 13000 | 30.115950 | 0.938107 | 0.093269 |
+  | 14000 | 30.197394 | 0.939781 | 0.092065 |
+  | 15000 | 30.298385 | 0.940794 | 0.090440 |
+
+- 已验证正式运行产生：
+  - 11 个 checkpoint
+  - 11 组 point cloud
+  - 11 个评估目录
+  - 110 张固定测试视角 render/GT 图
+- 已将最佳 PLY 同步到本地：
+  - `F:\PCH\myGSproj\supersplat_ply\thermal_20260710-121442_best_iter15000_psnr30.2984_ssim0.9408_lpips0.0904.ply`
+- 已验证本地最佳 PLY：
+  - 文件大小：`288676012` 字节
+  - 与远端文件大小一致
+  - 文件头为 `ply`
+- 原始数据目录未移动、未删除、未改名。
+
+#### 待执行
+
+- 用户在 SuperSplat 中打开本地 thermal 最佳 PLY，主观检查红外重建效果。
+- 提交并推送本次 thermal 脚本、测试和任务日志。
+
+#### 下一步
+
+- 如果 thermal 的 SuperSplat 效果可接受，将 `15000` 步作为 thermal 当前基线。
+- 如果 thermal 局部结构仍明显糊散，再考虑 thermal 专门的训练时长、曝光/伪彩处理或补拍策略。
