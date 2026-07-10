@@ -108,3 +108,25 @@ def test_evaluate_records_backend_result(tmp_path, monkeypatch):
     status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
     assert status["phase"] == "evaluating"
     assert status["iteration"] == 5000
+
+
+def test_status_records_bound_log_file(tmp_path, monkeypatch):
+    log_file = tmp_path / "visible.log"
+    monkeypatch.setenv("MYGS_MONITOR_DIR", str(tmp_path))
+    monkeypatch.setenv("MYGS_EVAL_ITERATIONS", "10")
+    monkeypatch.setenv("MYGS_LOG_FILE", str(log_file))
+    monitor.VisibleTrainingMonitor.from_environment(tmp_path, 10)
+    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert status["log_file"] == str(log_file.resolve())
+
+
+def test_resume_loads_existing_metric_history(tmp_path, monkeypatch):
+    files = monitor.RunFiles(tmp_path)
+    files.append_metric(rec(5000, 25.0, 0.800, 0.200), False)
+    monkeypatch.setenv("MYGS_MONITOR_DIR", str(tmp_path))
+    monkeypatch.setenv("MYGS_EVAL_ITERATIONS", "5000,6000")
+
+    instance = monitor.VisibleTrainingMonitor.from_environment(tmp_path, 6000)
+
+    assert instance.records == [rec(5000, 25.0, 0.800, 0.200)]
+    assert instance.record_metric(rec(6000, 24.9, 0.798, 0.202)) is True

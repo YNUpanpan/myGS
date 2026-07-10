@@ -85,6 +85,24 @@ class RunFiles:
                 writer.writeheader()
             writer.writerow({**asdict(record), "quality_dropped": int(dropped)})
 
+    def read_metrics(self) -> list[MetricRecord]:
+        if not self.metrics.exists():
+            return []
+        with self.metrics.open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        records = [
+            MetricRecord(
+                iteration=int(row["iteration"]),
+                psnr=float(row["psnr"]),
+                ssim=float(row["ssim"]),
+                lpips=float(row["lpips"]),
+            )
+            for row in rows
+        ]
+        if any(left.iteration >= right.iteration for left, right in zip(records, records[1:])):
+            raise ValueError("stored metric iterations must be strictly increasing")
+        return records
+
 
 TERMINAL_STATES = {"completed", "early_stopped", "failed", "preflight_failed"}
 DEFAULT_EVAL_ITERATIONS = tuple(range(5000, 15001, 1000))
@@ -112,13 +130,15 @@ class VisibleTrainingMonitor:
         total_iterations: int,
         eval_iterations: tuple[int, ...],
         pid: int,
+        log_file: Path | None,
     ) -> None:
         self.files = files
         self.total_iterations = total_iterations
         self.eval_iterations = eval_iterations
         self.pid = pid
+        self.log_file = log_file
         self.started = time.monotonic()
-        self.records: list[MetricRecord] = []
+        self.records = files.read_metrics()
         self._lpips_model = None
 
     @classmethod
@@ -137,7 +157,11 @@ class VisibleTrainingMonitor:
         if eval_iterations[-1] > total_iterations:
             raise ValueError("evaluation iteration exceeds total iterations")
         pid = int(os.environ.get("MYGS_TRAIN_PID", os.getpid()))
-        instance = cls(RunFiles(monitor_root), total_iterations, eval_iterations, pid)
+        raw_log_file = os.environ.get("MYGS_LOG_FILE")
+        log_file = None if not raw_log_file else Path(raw_log_file).resolve()
+        instance = cls(
+            RunFiles(monitor_root), total_iterations, eval_iterations, pid, log_file
+        )
         instance._write_status("training", 0, phase="initializing")
         return instance
 
@@ -164,6 +188,7 @@ class VisibleTrainingMonitor:
             "elapsed_seconds": round(elapsed, 3),
             "eta_seconds": None if eta is None else round(eta, 3),
             "pid": self.pid,
+            "log_file": None if self.log_file is None else str(self.log_file),
             "reason": reason,
             "updated_at": _utc_now(),
         }
