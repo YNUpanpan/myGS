@@ -419,3 +419,90 @@
 #### 下一步
 
 - 以后每次训练结束后，运行 `scripts/sync_best_ply.py --run-id <运行编号>`，把最佳 PLY 拉到本地 `supersplat_ply/` 后再进行 SuperSplat 验证。
+### 2026-07-10 对话 6：Visible 高分辨率提质实验
+
+#### 目标
+
+- 针对 SuperSplat 中心建筑较清晰、周边建筑和树木模糊的问题，定位质量瓶颈并提升 visible 重建效果。
+- 优先验证是否因官方 3DGS 默认将 4032x3024 图片降到 1600 宽导致远处细节不足。
+- 在不修改原始数据、不删除既有输出的前提下，增加可复现的高分辨率/半分辨率训练入口。
+
+#### 已确认决策
+
+- 不改原有 `scripts/run_visible_training.sh` 基线入口，新增 `scripts/run_visible_highres_training.sh` 用于提质实验。
+- 默认尝试 `--resolution 1`；如果单卡显存不足，则使用 `MYGS_VISIBLE_RESOLUTION=2` 运行半分辨率训练。
+- 正式半分辨率训练使用 GPU 0，visible 单场景，`--eval` 固定划分，训练到 30000 步。
+- 评估检查点为 5000、10000、15000、20000、25000、30000。
+- 不启动 thermal 训练。
+
+#### 只读探查结果
+
+- 原始 visible 图片分辨率为 `4032x3024`。
+- 旧 visible 训练 `20260710-082237` 的 `cfg_args` 中 `resolution=-1`。
+- 旧训练日志明确提示输入图像宽度超过 1.6K，官方 3DGS 自动缩放到 1.6K。
+- visible COLMAP 注册图像为 `339/339`，相机环绕角度连续，最大角度缺口约 `2.67°`。
+- 因此周边建筑模糊的主要可操作瓶颈是训练输入分辨率不足；数据覆盖不足仍是周边/树木质量的次要但真实限制。
+
+#### 已完成
+
+- 新增测试覆盖 highres 训练入口：
+  - `tests/test_visible_training_scripts.py`
+- 新增训练脚本：
+  - `scripts/run_visible_highres_training.sh`
+- 脚本支持：
+  - 默认 `--resolution 1`
+  - `MYGS_VISIBLE_RESOLUTION=2` fallback
+  - `smoke`、`start`、`resume`
+  - highres run id 自动携带分辨率标记，如 `highres-r2-...`
+- full-res smoke 运行失败，根因为加载 296 张训练相机到 GPU 时显存不足：
+  - run id：`smoke-highres-20260710-110434`
+  - 错误：CUDA OOM，GPU 0 约 31.37 GiB 显存被占满
+- 半分辨率 smoke 运行成功：
+  - run id：`smoke-highres-r2-20260710-110910`
+  - 最佳迭代：20
+  - PSNR `13.2601568`
+  - SSIM `0.3666128`
+  - LPIPS `0.6471726`
+- 半分辨率正式训练已完成：
+  - run id：`highres-r2-20260710-111217`
+  - 输出目录：`/home/pch/myGS/outputs/visible/highres-r2-20260710-111217`
+  - 日志：`/home/pch/myGS/logs/20260710-111217-train-visible.log`
+  - 最终状态：`completed`
+  - 终止原因：`max_iterations`
+  - 最终迭代：30000
+  - 最佳迭代：30000
+- 正式训练质量记录如下，`quality_dropped` 均为 `0`：
+
+  | 迭代 | PSNR (dB) | SSIM | LPIPS |
+  | ---: | ---: | ---: | ---: |
+  | 5000 | 25.717058 | 0.846238 | 0.206914 |
+  | 10000 | 28.104813 | 0.902852 | 0.147066 |
+  | 15000 | 29.178138 | 0.919686 | 0.128411 |
+  | 20000 | 29.733137 | 0.926414 | 0.120348 |
+  | 25000 | 29.912856 | 0.928903 | 0.117388 |
+  | 30000 | 30.094938 | 0.930814 | 0.115571 |
+
+- 已验证正式运行产生：
+  - 6 个 checkpoint
+  - 6 组 point cloud
+  - 6 个评估目录
+- 已将最佳 PLY 同步到本地：
+  - `F:\PCH\myGSproj\supersplat_ply\visible_highres-r2-20260710-111217_best_iter30000_psnr30.0949_ssim0.9308_lpips0.1156.ply`
+- 已验证本地最佳 PLY：
+  - 文件大小：`1071472636` 字节
+  - 与远端文件大小一致
+  - 文件头为 `ply`
+  - 顶点数：`4320448`
+- 自动化验证：
+  - `tests/test_visible_training_scripts.py`：`5 passed`
+  - visible training / monitor / patch / sync 相关测试：`20 passed`
+
+#### 待执行
+
+- 用户在 SuperSplat 中打开本地半分辨率 30000 步 PLY，重点对比图 1、图 2、图 3 圈出的周边建筑是否改善。
+- 将本次脚本、测试和任务日志提交并推送到 GitHub。
+
+#### 下一步
+
+- 如果 SuperSplat 视觉效果明显提升，将 `resolution=2 + 30000` 作为 visible 当前最佳基线。
+- 如果周边建筑仍明显糊散，下一步应补拍问题建筑周边多角度/多高度航线；仅继续调训练参数的收益会有限。

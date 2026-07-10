@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 RUNNER = ROOT / "scripts" / "run_visible_training.sh"
+HIGHRES_RUNNER = ROOT / "scripts" / "run_visible_highres_training.sh"
 MONITOR = ROOT / "scripts" / "monitor_visible_training.sh"
 GITIGNORE = ROOT / ".gitignore"
 SETUP_ENV = ROOT / "scripts" / "setup_3dgs_env.sh"
@@ -30,6 +31,35 @@ def test_runner_contract_and_syntax():
     assert "tmux new-session" not in text
     assert "nohup" not in text
     subprocess.run(["bash", "-n", str(RUNNER)], check=True)
+
+
+def test_highres_runner_contract_and_syntax():
+    assert HIGHRES_RUNNER.exists(), f"missing runner: {HIGHRES_RUNNER}"
+    text = HIGHRES_RUNNER.read_text(encoding="utf-8")
+    for required in (
+        "CUDA_VISIBLE_DEVICES=0",
+        "MYGS_MONITOR_DIR",
+        "MYGS_EVAL_ITERATIONS",
+        "--resolution",
+        '"1"',
+        "--iterations",
+        '"30000"',
+        "MYGS_VISIBLE_RESOLUTION",
+        "DEFAULT_RESOLUTION",
+        "resolution-${FULL_RESOLUTION}",
+        "5000,10000,15000,20000,25000,30000",
+        "highres-",
+        "smoke-highres-",
+        "--disable_viewer",
+        "--checkpoint_iterations",
+        "foreground-ssh",
+        "finalize-exit",
+    ):
+        assert required in text
+    assert "[ INFO ] Encountered quite large input images" not in text
+    assert "tmux new-session" not in text
+    assert "nohup" not in text
+    subprocess.run(["bash", "-n", str(HIGHRES_RUNNER)], check=True)
 
 
 def test_monitor_contract_and_syntax():
