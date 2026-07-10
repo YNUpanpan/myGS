@@ -1,54 +1,54 @@
-# Visible 3DGS Monitored Training Implementation Plan
+# Visible 3DGS 监控训练实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Train only the visible scene to at most 15000 iterations on GPU 0, synchronously evaluate a fixed 43-image holdout every 1000 iterations from 5000, expose live progress, and stop exactly at a checkpoint when the approved quality-decline rule fires.
+**目标：** 仅在 GPU 0 上训练 visible 场景，最多训练 15000 步；从 5000 步开始每 1000 步同步评估固定的 43 张测试图，提供实时进度，并在已确认的质量下降判据触发时精确停止在检查点。
 
-**Architecture:** Keep the official 3DGS checkout fixed at `54c035f`. Put reusable monitoring, metric history, atomic status output, and early-stop logic in a tracked Python module, then apply a small tracked patch that calls this module from the official continuous training loop. A Bash launcher performs all preflight checks and starts a persistent worker; a separate read-only monitor reports status without controlling or deleting the run.
+**架构：** 官方 3DGS checkout 固定为 `54c035f`。将可复用的进度监控、指标历史、原子状态输出和早停逻辑放入受 Git 跟踪的 Python 模块，再通过一个受跟踪的最小补丁从官方连续训练循环调用该模块。Bash 启动脚本负责全部预检并启动持久工作进程，独立的只读监控脚本负责报告状态，不控制或删除运行结果。
 
-**Tech Stack:** Bash, Python 3, dataclasses, JSON/CSV, PyTorch cu128, torchvision, official 3DGS renderer, LPIPS VGG, pytest/unittest, Git, Ubuntu, NVIDIA RTX 5090.
+**技术栈：** Bash、Python 3、dataclasses、JSON/CSV、PyTorch cu128、torchvision、官方 3DGS 渲染器、LPIPS VGG、pytest/unittest、Git、Ubuntu、NVIDIA RTX 5090。
 
-## Global Constraints
+## 全局约束
 
-- Server: `pch-5090`; project root: `/home/pch/myGS`.
-- Source scene: `/home/pch/myGS/datasets/uav_3dgs/processed/visible`.
-- Use only GPU 0 for this run; do not start thermal training.
-- Use project Conda env `mygs-3dgs-cu128`; do not change system CUDA.
-- Require official 3DGS checkout HEAD `54c035f` before applying the monitoring patch.
-- Run with `--eval`, producing the fixed 296-train/43-test split from 339 visible images.
-- Formal checkpoints: `5000 6000 7000 8000 9000 10000 11000 12000 13000 14000 15000`.
-- Early stop when PSNR drops by more than `0.05 dB` and either SSIM drops by more than `0.001` or LPIPS rises by more than `0.001` relative to the previous checkpoint.
-- Raw data stays read-only. Never use recursive deletion or batch deletion. Keep smoke and formal outputs.
-- Git tracks scripts, patch, tests, docs, and summaries only; it does not track data, tools, logs, renders, point clouds, or checkpoints.
-- Implement directly on server branch `main`, as previously authorized for this project.
-
----
-
-## File Structure
-
-- Create `scripts/visible_training_monitor.py`: pure threshold logic, best-checkpoint selection, atomic state files, CSV history, GPU evaluation, fixed-view render saving, and CLI finalization.
-- Create `tests/test_visible_training_monitor.py`: deterministic unit tests for thresholds, best selection, atomic status, CSV history, and terminal-state preservation.
-- Create `patches/gaussian-splatting/visible-monitored-training.patch`: minimal hooks for progress updates, synchronous evaluation, early stop, and terminal finalization.
-- Create `scripts/run_visible_training.sh`: preflight, patch verification/application, LPIPS cache check, formal/smoke launch, persistence, and resume validation.
-- Create `scripts/monitor_visible_training.sh`: read-only latest-run status, metrics, PID, GPU, and log display.
-- Modify `.gitignore`: ignore all project-local tools and generated runtime state without deleting them.
-- Modify `AGENTS.md`: append implementation, smoke, live-run, and final-result evidence under conversation 4.
+- 服务器为 `pch-5090`，项目根目录为 `/home/pch/myGS`。
+- 场景输入为 `/home/pch/myGS/datasets/uav_3dgs/processed/visible`。
+- 本次只使用 GPU 0，不启动 thermal 训练。
+- 使用项目 Conda 环境 `mygs-3dgs-cu128`，不修改系统 CUDA。
+- 应用监控补丁前，必须确认官方 3DGS checkout HEAD 为 `54c035f`。
+- 使用 `--eval`，将 339 张 visible 图像固定划分为 296 张训练图和 43 张测试图。
+- 正式检查点为 `5000 6000 7000 8000 9000 10000 11000 12000 13000 14000 15000`。
+- 相对上一检查点，PSNR 下降超过 `0.05 dB`，且 SSIM 下降超过 `0.001` 或 LPIPS 上升超过 `0.001` 时早停。
+- 原始数据保持只读；禁止递归删除或批量删除；保留 smoke run 和正式运行输出。
+- Git 只跟踪脚本、补丁、测试、文档和摘要，不跟踪数据、工具、日志、渲染图、点云或 checkpoint。
+- 按本项目此前授权，直接在服务器 `main` 分支实施。
 
 ---
 
-### Task 1: Pure Monitoring State and Early-Stop Logic
+## 文件结构
 
-**Files:**
-- Create: `/home/pch/myGS/scripts/visible_training_monitor.py`
-- Create: `/home/pch/myGS/tests/test_visible_training_monitor.py`
+- 创建 `scripts/visible_training_monitor.py`：负责纯阈值逻辑、最佳检查点选择、原子状态文件、CSV 历史、GPU 评估、固定视角渲染保存和 CLI 收尾。
+- 创建 `tests/test_visible_training_monitor.py`：为阈值、最佳结果选择、原子状态、CSV 历史和终止状态保留提供确定性单元测试。
+- 创建 `patches/gaussian-splatting/visible-monitored-training.patch`：为进度更新、同步评估、早停和终止状态增加最小钩子。
+- 创建 `scripts/run_visible_training.sh`：负责预检、补丁验证/应用、LPIPS 缓存检查、正式/smoke 启动、持久运行和续训校验。
+- 创建 `scripts/monitor_visible_training.sh`：只读显示最近运行的状态、指标、PID、GPU 和日志。
+- 修改 `.gitignore`：忽略全部项目本地工具和生成的运行状态，但不删除它们。
+- 修改 `AGENTS.md`：在对话 4 下追加实施、smoke run、实时运行和最终结果证据。
 
-**Interfaces:**
-- Produces: `MetricRecord`, `quality_dropped(previous, current) -> bool`, `select_best(records) -> MetricRecord`, `atomic_write_json(path, payload)`, and `RunFiles`.
-- Consumes: standard-library `csv`, `json`, `os`, `tempfile`, `dataclasses`, `pathlib`, and `typing` only for this task.
+---
 
-- [ ] **Step 1: Write failing threshold and best-selection tests**
+### 任务 1：纯监控状态与早停逻辑
 
-Create `tests/test_visible_training_monitor.py` with these initial tests:
+**文件：**
+- 创建：`/home/pch/myGS/scripts/visible_training_monitor.py`
+- 创建：`/home/pch/myGS/tests/test_visible_training_monitor.py`
+
+**接口：**
+- 产出：`MetricRecord`、`quality_dropped(previous, current) -> bool`、`select_best(records) -> MetricRecord`、`atomic_write_json(path, payload)` 和 `RunFiles`。
+- 依赖：本任务只使用标准库 `csv`、`json`、`os`、`tempfile`、`dataclasses`、`pathlib` 和 `typing`。
+
+- [ ] **步骤 1：编写阈值与最佳检查点选择的失败测试**
+
+创建 `tests/test_visible_training_monitor.py`，写入以下初始测试：
 
 ```python
 from pathlib import Path
@@ -91,20 +91,20 @@ def test_select_best_orders_psnr_then_ssim_then_lpips():
     assert monitor.select_best(records).iteration == 8000
 ```
 
-- [ ] **Step 2: Run tests and verify the expected failure**
+- [ ] **步骤 2：运行测试并确认按预期失败**
 
-Run:
+运行：
 
 ```bash
 cd /home/pch/myGS
 tools/miniconda3/bin/conda run -n mygs-3dgs-cu128 python -m pytest tests/test_visible_training_monitor.py -q
 ```
 
-Expected: collection fails because `scripts/visible_training_monitor.py` does not exist.
+预期：由于 `scripts/visible_training_monitor.py` 尚不存在，测试收集失败。
 
-- [ ] **Step 3: Implement the minimal pure module**
+- [ ] **步骤 3：实现最小纯逻辑模块**
 
-Create `scripts/visible_training_monitor.py` with:
+创建 `scripts/visible_training_monitor.py`，内容如下：
 
 ```python
 #!/usr/bin/env python3
@@ -191,15 +191,15 @@ class RunFiles:
             writer.writerow({**asdict(record), "quality_dropped": int(dropped)})
 ```
 
-- [ ] **Step 4: Run unit tests and verify they pass**
+- [ ] **步骤 4：运行单元测试并确认通过**
 
 Run the Step 2 command again.
 
-Expected: `3 passed`.
+预期：输出 `3 passed`。
 
-- [ ] **Step 5: Add atomic-file and CSV tests**
+- [ ] **步骤 5：增加原子文件与 CSV 测试**
 
-Add `import csv` and `import json` at the top of the test file, then append:
+在测试文件顶部增加 `import csv` 和 `import json`，然后追加：
 
 ```python
 def test_atomic_json_and_metric_csv(tmp_path):
@@ -216,13 +216,13 @@ def test_atomic_json_and_metric_csv(tmp_path):
     assert [int(row["quality_dropped"]) for row in rows] == [0, 1]
 ```
 
-Do not delete the temporary directory manually; pytest owns its lifecycle.
+不要手动删除临时目录；其生命周期由 pytest 管理。
 
-- [ ] **Step 6: Run the complete Task 1 test file**
+- [ ] **步骤 6：运行任务 1 的完整测试文件**
 
-Expected: all tests pass and `python -m py_compile scripts/visible_training_monitor.py` exits 0.
+预期：全部测试通过，且 `python -m py_compile scripts/visible_training_monitor.py` 退出码为 0。
 
-- [ ] **Step 7: Commit Task 1**
+- [ ] **步骤 7：提交任务 1**
 
 ```bash
 git add scripts/visible_training_monitor.py tests/test_visible_training_monitor.py
@@ -232,19 +232,19 @@ git push
 
 ---
 
-### Task 2: Runtime Progress, Test Metrics, and Terminal State
+### 任务 2：运行时进度、测试指标与终止状态
 
-**Files:**
-- Modify: `/home/pch/myGS/scripts/visible_training_monitor.py`
-- Modify: `/home/pch/myGS/tests/test_visible_training_monitor.py`
+**文件：**
+- 修改：`/home/pch/myGS/scripts/visible_training_monitor.py`
+- 修改：`/home/pch/myGS/tests/test_visible_training_monitor.py`
 
-**Interfaces:**
-- Produces: `VisibleTrainingMonitor.from_environment(model_path, total_iterations)`, `update_progress(iteration, ema_loss)`, `evaluate(iteration, cameras, render_func, render_args, train_test_exp) -> bool`, and `finalize(state, iteration, reason)`.
-- Consumes: `MYGS_MONITOR_DIR`, `MYGS_EVAL_ITERATIONS`, `MYGS_TRAIN_PID`, PyTorch tensors, 3DGS `render_func`, and fixed test cameras.
+**接口：**
+- 产出：`VisibleTrainingMonitor.from_environment(model_path, total_iterations)`、`update_progress(iteration, ema_loss)`、`evaluate(iteration, cameras, render_func, render_args, train_test_exp) -> bool` 和 `finalize(state, iteration, reason)`。
+- 依赖：`MYGS_MONITOR_DIR`、`MYGS_EVAL_ITERATIONS`、`MYGS_TRAIN_PID`、PyTorch 张量、3DGS `render_func` 和固定测试相机。
 
-- [ ] **Step 1: Write failing lifecycle tests**
+- [ ] **步骤 1：编写生命周期失败测试**
 
-Add `import json` if it is not already present, then append this exact lifecycle test:
+若文件尚未导入 `json`，先增加 `import json`，再追加以下生命周期测试：
 
 ```python
 def test_lifecycle_records_drop_and_best_iteration(tmp_path, monkeypatch):
@@ -262,23 +262,23 @@ def test_lifecycle_records_drop_and_best_iteration(tmp_path, monkeypatch):
     assert summary["state"] == "early_stopped"
 ```
 
-- [ ] **Step 2: Verify the new lifecycle tests fail**
+- [ ] **步骤 2：确认新的生命周期测试失败**
 
-Expected: failure because `VisibleTrainingMonitor` is not defined.
+预期：由于 `VisibleTrainingMonitor` 尚未定义，测试失败。
 
-- [ ] **Step 3: Implement lifecycle methods and environment validation**
+- [ ] **步骤 3：实现生命周期方法与环境校验**
 
-Add `VisibleTrainingMonitor` with these exact invariants:
+增加 `VisibleTrainingMonitor`，严格满足以下不变量：
 
 - `MYGS_MONITOR_DIR` must resolve to the same directory as `model_path`.
-- Formal eval iterations default to the approved list and must be strictly increasing.
+- 正式评估迭代默认使用已批准列表，并且必须严格递增。
 - `update_progress` atomically writes state `training` every 10 iterations and computes ETA from monotonic elapsed time.
 - `record_metric` compares only with the immediately previous record, appends CSV, updates best metrics, and returns the early-stop decision.
 - `finalize` writes terminal `status.json` and `summary.json`; a later shell finalizer must not overwrite `completed` or `early_stopped` with `failed`.
 
-- [ ] **Step 4: Implement GPU evaluation once per checkpoint**
+- [ ] **步骤 4：实现每个检查点一次的 GPU 评估**
 
-In `evaluate`:
+在 `evaluate` 中：
 
 1. Set status phase to `evaluating`.
 2. Lazily instantiate one `lpipsPyTorch.modules.lpips.LPIPS(net_type="vgg")` model on CUDA and reuse it.
@@ -288,9 +288,9 @@ In `evaluate`:
 6. Call `record_metric` and return its Boolean result.
 7. Release per-view tensors and call `torch.cuda.empty_cache()` after evaluation.
 
-- [ ] **Step 5: Add a CLI finalizer**
+- [ ] **步骤 5：增加 CLI 退出状态收尾器**
 
-Support:
+支持：
 
 ```bash
 python scripts/visible_training_monitor.py finalize-exit \
@@ -300,11 +300,11 @@ python scripts/visible_training_monitor.py finalize-exit \
 
 If current state is nonterminal, set state `failed`, preserve last iteration, and record `process_exit_<code>`; otherwise leave the terminal files unchanged.
 
-- [ ] **Step 6: Run unit tests and static compilation**
+- [ ] **步骤 6：运行单元测试与静态编译检查**
 
-Expected: all monitor tests pass; `py_compile` exits 0.
+预期：全部监控测试通过，`py_compile` 退出码为 0。
 
-- [ ] **Step 7: Commit Task 2**
+- [ ] **步骤 7：提交任务 2**
 
 ```bash
 git add scripts/visible_training_monitor.py tests/test_visible_training_monitor.py
@@ -314,30 +314,30 @@ git push
 
 ---
 
-### Task 3: Minimal Official 3DGS Training Hook Patch
+### 任务 3：官方 3DGS 训练循环的最小钩子补丁
 
-**Files:**
-- Create: `/home/pch/myGS/patches/gaussian-splatting/visible-monitored-training.patch`
-- Modify only in ignored checkout: `/home/pch/myGS/tools/gaussian-splatting/train.py`
+**文件：**
+- 创建：`/home/pch/myGS/patches/gaussian-splatting/visible-monitored-training.patch`
+- 仅在已忽略的 checkout 中修改：`/home/pch/myGS/tools/gaussian-splatting/train.py`
 
-**Interfaces:**
-- Consumes: `VisibleTrainingMonitor` on `PYTHONPATH` and the existing official `training()` loop.
-- Produces: progress updates every 10 iterations, synchronous checkpoint evaluations, exact early-stop break, and terminal status.
+**接口：**
+- 依赖：`PYTHONPATH` 中的 `VisibleTrainingMonitor` 和现有官方 `training()` 循环。
+- 产出：每 10 步进度更新、同步检查点评估、精确早停退出和终止状态。
 
-- [ ] **Step 1: Verify the patch baseline before editing**
+- [ ] **步骤 1：编辑前验证补丁基线**
 
-Run:
+运行：
 
 ```bash
 test "$(git -C tools/gaussian-splatting rev-parse --short HEAD)" = "54c035f"
 git -C tools/gaussian-splatting diff --exit-code -- train.py
 ```
 
-Expected: both commands exit 0.
+预期：两个命令的退出码均为 0。
 
-- [ ] **Step 2: Add the monitor import and initialize it after `Scene` creation**
+- [ ] **步骤 2：导入监控模块并在创建 `Scene` 后初始化**
 
-Apply an edit equivalent to:
+应用等价于以下内容的编辑：
 
 ```python
 from visible_training_monitor import VisibleTrainingMonitor
@@ -348,9 +348,9 @@ early_stopped = False
 last_iteration = first_iter
 ```
 
-- [ ] **Step 3: Add progress and synchronous evaluation hooks**
+- [ ] **步骤 3：增加进度与同步评估钩子**
 
-Inside the no-grad block:
+在 no-grad 代码块中：
 
 ```python
 last_iteration = iteration
@@ -368,7 +368,7 @@ if iteration in monitor.eval_iterations:
     )
 ```
 
-Run the official save and checkpoint blocks for the iteration before honoring `stop_requested`. If true, set `early_stopped = True`, close the progress bar, and `break` before the next iteration. After the loop:
+先执行当前迭代的官方保存和 checkpoint 代码块，再处理 `stop_requested`。若为真，设置 `early_stopped = True`，关闭进度条，并在进入下一迭代前 `break`。循环结束后：
 
 ```python
 if early_stopped:
@@ -377,13 +377,13 @@ else:
     monitor.finalize("completed", last_iteration, "max_iterations")
 ```
 
-- [ ] **Step 4: Disable duplicate official test reporting in the launcher contract**
+- [ ] **步骤 4：在启动参数中禁用重复的官方测试报告**
 
-The later launcher must pass `--test_iterations 15001`; monitor evaluations remain governed by `MYGS_EVAL_ITERATIONS`. Saving and checkpoint arguments still contain all formal evaluation iterations.
+后续启动脚本必须传入 `--test_iterations 15001`；监控评估仍由 `MYGS_EVAL_ITERATIONS` 控制。保存与 checkpoint 参数继续包含全部正式评估迭代。
 
-- [ ] **Step 5: Generate and reset the tracked patch safely**
+- [ ] **步骤 5：安全生成并反向应用受跟踪补丁**
 
-Run:
+运行：
 
 ```bash
 mkdir -p patches/gaussian-splatting
@@ -393,18 +393,18 @@ git -C tools/gaussian-splatting apply --reverse /home/pch/myGS/patches/gaussian-
 git -C tools/gaussian-splatting apply --check /home/pch/myGS/patches/gaussian-splatting/visible-monitored-training.patch
 ```
 
-Expected: reverse-check succeeds before the reverse application; forward-check succeeds after it. This changes only the explicit `train.py` file and does not delete any file.
+预期：反向应用前的反向检查成功，反向应用后的正向检查成功。该操作只修改明确的 `train.py`，不删除任何文件。
 
-- [ ] **Step 6: Apply the patch and verify Python compilation**
+- [ ] **步骤 6：应用补丁并验证 Python 编译**
 
 ```bash
 git -C tools/gaussian-splatting apply /home/pch/myGS/patches/gaussian-splatting/visible-monitored-training.patch
 tools/miniconda3/bin/conda run -n mygs-3dgs-cu128 python -m py_compile tools/gaussian-splatting/train.py scripts/visible_training_monitor.py
 ```
 
-Expected: both exit 0. If forward-check fails but reverse-check succeeds, the patch is already applied and must not be applied a second time.
+预期：两个命令退出码均为 0。若正向检查失败而反向检查成功，说明补丁已经应用，不得重复应用。
 
-- [ ] **Step 7: Commit Task 3**
+- [ ] **步骤 7：提交任务 3**
 
 ```bash
 git add patches/gaussian-splatting/visible-monitored-training.patch
@@ -414,22 +414,22 @@ git push
 
 ---
 
-### Task 4: Persistent Launcher and Read-Only Monitor
+### 任务 4：持久启动脚本与只读监控脚本
 
-**Files:**
-- Create: `/home/pch/myGS/scripts/run_visible_training.sh`
-- Create: `/home/pch/myGS/scripts/monitor_visible_training.sh`
-- Modify: `/home/pch/myGS/.gitignore`
+**文件：**
+- 创建：`/home/pch/myGS/scripts/run_visible_training.sh`
+- 创建：`/home/pch/myGS/scripts/monitor_visible_training.sh`
+- 修改：`/home/pch/myGS/.gitignore`
 
-**Interfaces:**
+**接口：**
 - `bash scripts/run_visible_training.sh smoke` starts a retained short validation run.
 - `bash scripts/run_visible_training.sh start` starts the formal 15000-step persistent run and prints `run_id`, output path, log path, and PID.
 - `bash scripts/run_visible_training.sh resume <run_dir>` validates and resumes from the last checkpoint in that same directory.
 - `bash scripts/monitor_visible_training.sh [run_dir]` performs read-only reporting.
 
-- [ ] **Step 1: Add launcher preflight checks**
+- [ ] **步骤 1：增加启动前预检**
 
-Start `scripts/run_visible_training.sh` with this preflight function and call it before creating a run directory:
+在 `scripts/run_visible_training.sh` 开头加入以下预检函数，并在创建运行目录前调用：
 
 ```bash
 #!/usr/bin/env bash
@@ -458,35 +458,35 @@ test -f "${GAUSSIAN_SPLATTING_DIR}/train.py"
 }
 ```
 
-It must also count 339 prepared images, verify GPU 0 is visible, verify the monitor patch is applied or safely apply it once, and reject launch if an existing recorded visible PID is still alive.
+脚本还必须确认已准备图像为 339 张、GPU 0 可见、监控补丁已应用或可以安全应用一次；如果已有记录的 visible PID 仍存活，则拒绝启动。
 
-- [ ] **Step 2: Add formal and smoke parameter sets**
+- [ ] **步骤 2：增加正式运行和 smoke run 参数集**
 
-Formal values:
+正式运行参数：
 
 ```bash
 iterations=15000
 eval_iterations=(5000 6000 7000 8000 9000 10000 11000 12000 13000 14000 15000)
 ```
 
-Smoke values retained under a distinct `smoke-<timestamp>` run:
+smoke run 使用独立的 `smoke-<timestamp>` 运行目录，并采用：
 
 ```bash
 iterations=20
 eval_iterations=(10 20)
 ```
 
-Both modes pass `--eval`, `--disable_viewer`, `--test_iterations $((iterations + 1))`, and identical save/checkpoint iteration arrays. Smoke thresholds and output must not alter formal defaults.
+两种模式都传入 `--eval`、`--disable_viewer`、`--test_iterations $((iterations + 1))`，并使用相同的保存与 checkpoint 迭代数组。smoke run 的阈值和输出不得修改正式运行默认值。
 
-- [ ] **Step 3: Add persistent execution and exit finalization**
+- [ ] **步骤 3：增加持久执行与退出状态收尾**
 
-Start the worker with `nohup setsid`, `CUDA_VISIBLE_DEVICES=0`, `PYTHONPATH=/home/pch/myGS/scripts`, `MYGS_MONITOR_DIR`, `MYGS_EVAL_ITERATIONS`, and `MYGS_TRAIN_PID`. Redirect stdout/stderr to one log. Save only the exact launcher PID to `train.pid`. After Python exits, invoke `finalize-exit` with its exit code.
+使用 `nohup setsid` 启动工作进程，并设置 `CUDA_VISIBLE_DEVICES=0`、`PYTHONPATH=/home/pch/myGS/scripts`、`MYGS_MONITOR_DIR`、`MYGS_EVAL_ITERATIONS` 和 `MYGS_TRAIN_PID`。将 stdout/stderr 重定向到同一个日志，只把准确的启动 PID 写入 `train.pid`。Python 退出后，用其退出码调用 `finalize-exit`。
 
-- [ ] **Step 4: Add safe resume validation**
+- [ ] **步骤 4：增加安全续训校验**
 
-Resume must require an explicit existing run directory, terminal/non-running PID, matching visible source path in `cfg_args`, and the numerically greatest `chkpnt<N>.pth`. It must preserve `metrics.csv` and pass `--start_checkpoint` for that exact file. It must never search outside the explicit run directory and never delete partial output.
+续训必须要求明确且已存在的运行目录、已经终止或不再运行的 PID、`cfg_args` 中匹配的 visible 源路径，以及数字序号最大的 `chkpnt<N>.pth`。必须保留 `metrics.csv`，并把该明确文件传给 `--start_checkpoint`。不得在指定运行目录之外搜索，也不得删除不完整输出。
 
-- [ ] **Step 5: Implement read-only monitoring**
+- [ ] **步骤 5：实现只读监控**
 
 `monitor_visible_training.sh` must print:
 
@@ -497,9 +497,9 @@ Resume must require an explicit existing run directory, terminal/non-running PID
 - GPU 0 memory/utilization from `nvidia-smi`;
 - last 30 lines of the log path recorded in status.
 
-It must not send signals, mutate status, or create output.
+脚本不得发送信号、修改状态或创建输出。
 
-Use this shell structure:
+采用以下 shell 结构：
 
 ```bash
 #!/usr/bin/env bash
@@ -537,9 +537,9 @@ if [[ -n "${log_file}" ]]; then
 fi
 ```
 
-- [ ] **Step 6: Extend `.gitignore` without deleting files**
+- [ ] **步骤 6：扩展 `.gitignore`，但不删除文件**
 
-Add:
+增加：
 
 ```gitignore
 tools/
@@ -547,9 +547,9 @@ outputs/
 logs/*.log
 ```
 
-Keep the existing specific ignore rules. Do not remove or clean the existing `tools/` contents.
+保留现有的细分忽略规则，不移除或清理已有 `tools/` 内容。
 
-- [ ] **Step 7: Verify shell scripts**
+- [ ] **步骤 7：验证 shell 脚本**
 
 ```bash
 bash -n scripts/run_visible_training.sh
@@ -557,9 +557,9 @@ bash -n scripts/monitor_visible_training.sh
 shellcheck scripts/run_visible_training.sh scripts/monitor_visible_training.sh
 ```
 
-Expected: syntax checks pass. If `shellcheck` is unavailable, record that fact and use `bash -n` plus smoke execution; do not install system packages without approval.
+预期：语法检查通过。如果 `shellcheck` 不可用，记录这一事实，并使用 `bash -n` 加 smoke run 验证；未经批准不得安装系统软件包。
 
-- [ ] **Step 8: Commit Task 4**
+- [ ] **步骤 8：提交任务 4**
 
 ```bash
 git add .gitignore scripts/run_visible_training.sh scripts/monitor_visible_training.sh
@@ -569,14 +569,14 @@ git push
 
 ---
 
-### Task 5: LPIPS Preflight and Smoke Run
+### 任务 5：LPIPS 预检与 smoke run
 
-**Files:**
-- Modify if required by evidence: `/home/pch/myGS/scripts/run_visible_training.sh`
-- Modify if required by evidence: `/home/pch/myGS/scripts/visible_training_monitor.py`
-- Modify: `/home/pch/myGS/AGENTS.md`
+**文件：**
+- 若证据表明需要则修改：`/home/pch/myGS/scripts/run_visible_training.sh`
+- 若证据表明需要则修改：`/home/pch/myGS/scripts/visible_training_monitor.py`
+- 修改：`/home/pch/myGS/AGENTS.md`
 
-- [ ] **Step 1: Run all offline verification**
+- [ ] **步骤 1：运行全部离线验证**
 
 ```bash
 cd /home/pch/myGS
@@ -587,24 +587,24 @@ bash -n scripts/monitor_visible_training.sh
 git diff --check
 ```
 
-Expected: all commands exit 0.
+预期：全部命令退出码均为 0。
 
-- [ ] **Step 2: Cache and verify LPIPS VGG weights before training**
+- [ ] **步骤 2：训练前缓存并验证 LPIPS VGG 权重**
 
-From `/home/pch/myGS/tools/gaussian-splatting`, instantiate `LPIPS(net_type="vgg")` once in the project Conda environment on GPU 0 and evaluate two small equal tensors. Expected: finite LPIPS value and cached VGG/LPIPS weights. If download fails because of restricted network, retry only through the approved server access path; do not start smoke or formal training without a successful load.
+在 `/home/pch/myGS/tools/gaussian-splatting` 中，使用项目 Conda 环境在 GPU 0 上实例化一次 `LPIPS(net_type="vgg")`，并评估两个相同的小张量。预期获得有限的 LPIPS 数值，同时 VGG/LPIPS 权重已缓存。如果因网络限制下载失败，只能通过已批准的服务器访问路径重试；权重加载成功前不得启动 smoke run 或正式训练。
 
-- [ ] **Step 3: Start the retained smoke run**
+- [ ] **步骤 3：启动保留结果的 smoke run**
 
 ```bash
 cd /home/pch/myGS
 bash scripts/run_visible_training.sh smoke
 ```
 
-Expected: prints a unique smoke run directory, log path, and PID.
+预期：输出唯一的 smoke run 目录、日志路径和 PID。
 
-- [ ] **Step 4: Monitor smoke to a terminal state**
+- [ ] **步骤 4：监控 smoke run 直到终止状态**
 
-Poll at short intervals using the read-only monitor. Expected within the smoke run:
+使用只读监控脚本短间隔轮询。smoke run 中预期：
 
 - status progresses through `training` and `evaluating`;
 - `metrics.csv` contains iterations 10 and 20;
@@ -612,11 +612,11 @@ Poll at short intervals using the read-only monitor. Expected within the smoke r
 - `chkpnt10.pth` and `chkpnt20.pth` exist;
 - final state is `completed` unless the intentionally tiny smoke metrics trigger the real early-stop rule at 20, in which case `early_stopped` is acceptable.
 
-- [ ] **Step 5: Diagnose any failure systematically**
+- [ ] **步骤 5：系统化诊断任何失败**
 
-On failure, stop formal execution, preserve the smoke directory and log, identify the root cause, add a failing automated test when applicable, make one minimal fix, and rerun all Task 5 verification. Do not delete failed smoke output.
+若失败，停止进入正式训练，保留 smoke run 目录和日志，定位根因；适用时增加一个失败的自动化测试，只实施一个最小修复，然后重新运行任务 5 的全部验证。不要删除失败的 smoke run 输出。
 
-- [ ] **Step 6: Record smoke evidence in conversation 4 and commit**
+- [ ] **步骤 6：在对话 4 中记录 smoke run 证据并提交**
 
 Append exact run directory, log, metrics, terminal state, GPU, and verification commands to `AGENTS.md` under conversation 4.
 
@@ -628,37 +628,37 @@ git push
 
 ---
 
-### Task 6: Formal Visible Training and Continuous Monitoring
+### 任务 6：Visible 正式训练与持续监控
 
-**Files:**
-- Generated only: `/home/pch/myGS/outputs/visible/<run_id>/`
-- Generated only: `/home/pch/myGS/logs/<timestamp>-train-visible.log`
-- Modify after terminal result: `/home/pch/myGS/AGENTS.md`
+**文件：**
+- 仅生成：`/home/pch/myGS/outputs/visible/<run_id>/`
+- 仅生成：`/home/pch/myGS/logs/<timestamp>-train-visible.log`
+- 得到终止结果后修改：`/home/pch/myGS/AGENTS.md`
 
-- [ ] **Step 1: Recheck formal preconditions immediately before launch**
+- [ ] **步骤 1：正式启动前再次检查前置条件**
 
-Verify GPU 0 is idle, no recorded visible training PID is alive, smoke state is terminal, source count remains 339, sparse files exist, tests pass, patch is applied, and Git tracked files are clean. Existing unrelated ignored/untracked tool files do not authorize deletion.
+确认 GPU 0 空闲、没有已记录且仍存活的 visible 训练 PID、smoke run 已进入终止状态、源图数量仍为 339、sparse 文件存在、测试通过、补丁已应用且 Git 已跟踪文件干净。现有无关的忽略或未跟踪工具文件不构成删除授权。
 
-- [ ] **Step 2: Start exactly one formal visible run**
+- [ ] **步骤 2：只启动一个 visible 正式运行**
 
 ```bash
 cd /home/pch/myGS
 bash scripts/run_visible_training.sh start
 ```
 
-Capture printed `run_id`, output directory, log path, and PID. Confirm no thermal process was started.
+记录输出的 `run_id`、输出目录、日志路径和 PID，并确认没有启动 thermal 进程。
 
-- [ ] **Step 3: Monitor live progress until the first quality baseline**
+- [ ] **步骤 3：实时监控到首个质量基准点**
 
-Use `scripts/monitor_visible_training.sh <run_dir>` repeatedly. Report meaningful progress to the user without gaps longer than 60 seconds while actively attached. At iteration 5000, verify the first complete PSNR/SSIM/LPIPS row, checkpoint, point cloud, and five fixed-view render/GT pairs.
+重复运行 `scripts/monitor_visible_training.sh <run_dir>`。主动监控期间，向用户报告有意义的进度，间隔不超过 60 秒。到达 5000 步时，验证首行完整 PSNR/SSIM/LPIPS、checkpoint、点云以及 5 组固定视角 render/GT。
 
-- [ ] **Step 4: Enforce each later early-stop decision**
+- [ ] **步骤 4：执行后续每个检查点的早停判断**
 
-For every reached checkpoint from 6000 onward, verify the current row compares with the immediately previous row using the approved thresholds. If quality drops, verify state becomes `early_stopped`, last iteration equals that checkpoint, and the recommended checkpoint is the preceding non-degraded checkpoint. Otherwise continue monitoring to the next checkpoint, at most 15000.
+从 6000 步开始，对每个已到达检查点，确认当前指标行按已批准阈值与紧邻的上一行比较。若质量下降，确认状态变为 `early_stopped`、最后迭代等于该检查点，并推荐下降前的检查点；否则继续监控下一个检查点，最多到 15000 步。
 
-- [ ] **Step 5: Verify terminal outputs**
+- [ ] **步骤 5：验证终止输出**
 
-Run read-only checks confirming:
+运行只读检查，确认：
 
 - state is `completed` or `early_stopped`;
 - summary stop reason, last iteration, and best iteration agree with metrics;
@@ -667,11 +667,11 @@ Run read-only checks confirming:
 - no thermal training output was created by this task;
 - raw data count and names remain unchanged.
 
-- [ ] **Step 6: Update conversation 4 with final evidence**
+- [ ] **步骤 6：用最终证据更新对话 4**
 
-Record run directory, log, terminal state, last/best iteration, complete metrics table, stop decision, best PLY/checkpoint, and raw-data verification. Mark only this independent visible task complete; do not mark the earlier visible+thermal Task 6 complete.
+记录运行目录、日志、终止状态、最后/最佳迭代、完整指标表、停止判断、最佳 PLY/checkpoint 和原始数据验证。只将本次独立 visible 任务标记为完成，不要把先前的 visible+thermal Task 6 标记为完成。
 
-- [ ] **Step 7: Commit and push the final engineering record**
+- [ ] **步骤 7：提交并推送最终工程记录**
 
 ```bash
 git add AGENTS.md
@@ -679,38 +679,38 @@ git commit -m "Record monitored visible training result"
 git push
 ```
 
-Expected: push succeeds; generated outputs remain ignored.
+预期：推送成功，生成输出继续保持忽略状态。
 
 ---
 
-## Self-Review
+## 自审
 
-### Spec coverage
+### 规格覆盖
 
-- Visible-only, GPU 0, 15000 maximum, `--eval`, 296/43 split, and fixed checkpoints are covered in Global Constraints and Tasks 3–6.
-- PSNR/SSIM/LPIPS, fixed renders, exact early stop, best checkpoint, and retained outputs are covered in Tasks 1–3 and 6.
-- Live status, persistence, PID, logs, failure state, and safe resume are covered in Tasks 2 and 4.
-- LPIPS preflight and smoke-before-formal requirements are covered in Task 5.
-- Git/data/deletion boundaries and independent conversation 4 logging are covered throughout and in Tasks 4–6.
+- 仅 visible、GPU 0、15000 步上限、`--eval`、296/43 划分和固定检查点由全局约束及任务 3–6 覆盖。
+- PSNR/SSIM/LPIPS、固定渲染图、精确早停、最佳 checkpoint 和保留输出由任务 1–3、6 覆盖。
+- 实时状态、持久运行、PID、日志、失败状态和安全续训由任务 2、4 覆盖。
+- LPIPS 预检以及正式训练前必须 smoke run 的要求由任务 5 覆盖。
+- Git/数据/删除边界和独立对话 4 日志贯穿全文，并由任务 4–6 落实。
 
-### Placeholder scan
+### 占位符扫描
 
-- The plan contains no deferred implementation markers or unspecified error-handling steps.
-- Formal values and smoke-only overrides are explicit and separate.
+- 计划不含延后实现标记或未明确的错误处理步骤。
+- 正式参数和仅用于 smoke run 的覆盖参数均已明确分开。
 
-### Interface consistency
+### 接口一致性
 
 - `MetricRecord`, `quality_dropped`, `select_best`, `VisibleTrainingMonitor`, `record_metric`, `evaluate`, and `finalize` use the same names across tasks.
 - `MYGS_MONITOR_DIR`, `MYGS_EVAL_ITERATIONS`, and `MYGS_TRAIN_PID` are the only monitoring environment interfaces.
-- Terminal states are consistently `completed`, `early_stopped`, `failed`, and `preflight_failed`.
+- 终止状态统一使用 `completed`、`early_stopped`、`failed` 和 `preflight_failed`。
 
-## Execution Handoff
+## 执行交接
 
-Plan complete and saved to `docs/superpowers/plans/2026-07-10-visible-3dgs-monitored-training-implementation.md`.
+计划已完成并保存到 `docs/superpowers/plans/2026-07-10-visible-3dgs-monitored-training-implementation.md`。
 
-Two execution options:
+两种执行方式：
 
-1. **Subagent-Driven (recommended by the generic workflow)** — dispatch a fresh subagent per task with review gates.
-2. **Inline Execution** — execute this plan in the current session with `superpowers:executing-plans` and checkpoints.
+1. **子代理驱动（通用工作流推荐）**：每个任务分派新的子代理，并设置审查关口。
+2. **当前会话内执行**：在当前会话中使用 `superpowers:executing-plans` 和检查点执行计划。
 
-For this project, the previously selected working style is Inline Execution, so Inline Execution is the default recommendation unless the user explicitly chooses delegation.
+本项目此前已选择当前会话内执行，因此除非用户明确选择委派，否则默认推荐继续在当前会话内执行。
