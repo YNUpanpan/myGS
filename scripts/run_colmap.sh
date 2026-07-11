@@ -20,6 +20,7 @@ COLMAP_SIFT_MATCHING_USE_GPU="${COLMAP_SIFT_MATCHING_USE_GPU:-${COLMAP_SIFT_USE_
 COLMAP_SIFT_NUM_THREADS="${COLMAP_SIFT_NUM_THREADS:-8}"
 COLMAP_MATCHER="${COLMAP_MATCHER:-sequential}"
 COLMAP_SEQUENTIAL_OVERLAP="${COLMAP_SEQUENTIAL_OVERLAP:-20}"
+COLMAP_IMAGE_READER_SINGLE_CAMERA="${COLMAP_IMAGE_READER_SINGLE_CAMERA:-1}"
 
 processed_dir="$(scene_processed_dir "${scene}")"
 images_dir="${processed_dir}/images"
@@ -65,6 +66,41 @@ normalize_sparse_model() {
   fi
 }
 
+registered_image_count() {
+  local model_path="$1"
+  "${COLMAP_BIN}" model_analyzer --path "${model_path}" 2>&1 |
+    awk -F': ' '/Registered images/ {print $2; exit}'
+}
+
+select_largest_sparse_model() {
+  local best_path=""
+  local best_count="-1"
+  local model_path
+  local count
+
+  shopt -s nullglob
+  for model_path in "${distorted_dir}/sparse"/*; do
+    if [[ ! -d "${model_path}" ||
+      ! -f "${model_path}/cameras.bin" ||
+      ! -f "${model_path}/images.bin" ||
+      ! -f "${model_path}/points3D.bin" ]]; then
+      continue
+    fi
+    count="$(registered_image_count "${model_path}")"
+    if [[ -n "${count}" && "${count}" -gt "${best_count}" ]]; then
+      best_count="${count}"
+      best_path="${model_path}"
+    fi
+  done
+  shopt -u nullglob
+
+  if [[ -z "${best_path}" ]]; then
+    return 1
+  fi
+
+  echo "${best_path}"
+}
+
 {
   echo "COLMAP scene=${scene}"
   echo "images_dir=${images_dir}"
@@ -77,6 +113,7 @@ normalize_sparse_model() {
   echo "COLMAP_SIFT_NUM_THREADS=${COLMAP_SIFT_NUM_THREADS}"
   echo "COLMAP_MATCHER=${COLMAP_MATCHER}"
   echo "COLMAP_SEQUENTIAL_OVERLAP=${COLMAP_SEQUENTIAL_OVERLAP}"
+  echo "COLMAP_IMAGE_READER_SINGLE_CAMERA=${COLMAP_IMAGE_READER_SINGLE_CAMERA}"
   echo "started_at=$(date -Is)"
 
   normalize_sparse_model
@@ -86,7 +123,7 @@ normalize_sparse_model() {
     "${COLMAP_BIN}" feature_extractor \
       --database_path "${database_path}" \
       --image_path "${images_dir}" \
-      --ImageReader.single_camera 1 \
+      --ImageReader.single_camera "${COLMAP_IMAGE_READER_SINGLE_CAMERA}" \
       --SiftExtraction.use_gpu "${COLMAP_SIFT_EXTRACTION_USE_GPU}" \
       --SiftExtraction.num_threads "${COLMAP_SIFT_NUM_THREADS}"
 
@@ -115,14 +152,17 @@ normalize_sparse_model() {
       --image_path "${images_dir}" \
       --output_path "${distorted_dir}/sparse"
 
-    if [[ ! -d "${distorted_dir}/sparse/0" ]]; then
-      echo "COLMAP mapper did not produce ${distorted_dir}/sparse/0" >&2
+    if ! selected_sparse_model="$(select_largest_sparse_model)"; then
+      echo "COLMAP mapper did not produce a valid sparse model under ${distorted_dir}/sparse" >&2
       exit 42
     fi
+    selected_registered_count="$(registered_image_count "${selected_sparse_model}")"
+    echo "selected_sparse_model=${selected_sparse_model}"
+    echo "selected_registered_images=${selected_registered_count}"
 
     "${COLMAP_BIN}" image_undistorter \
       --image_path "${images_dir}" \
-      --input_path "${distorted_dir}/sparse/0" \
+      --input_path "${selected_sparse_model}" \
       --output_path "${processed_dir}" \
       --output_type COLMAP
 

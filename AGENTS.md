@@ -606,3 +606,170 @@
 
 - 如果 thermal 的 SuperSplat 效果可接受，将 `15000` 步作为 thermal 当前基线。
 - 如果 thermal 局部结构仍明显糊散，再考虑 thermal 专门的训练时长、曝光/伪彩处理或补拍策略。
+
+### 2026-07-11 对话 8：夜间可见光与红外 3DGS 场景重建
+
+#### 目标
+
+- 用户确认白天数据中心建筑清晰即可，上一阶段任务完成。
+- 对夜晚 12:00 的可见光和红外数据，同样完成 3D Gaussian Splatting 场景重建。
+- 本地数据来源：
+  - 白天数据归档：`F:\PCH\myGSproj\day`
+  - 夜间数据：`F:\PCH\myGSproj\night`
+- 将夜间可见光和红外最佳 `point_cloud.ply` 同步到本地 `F:\PCH\myGSproj\supersplat_ply\`，供 SuperSplat 检查。
+
+#### 已确认决策
+
+- 夜间数据作为新任务处理，不覆盖白天结果。
+- 原始数据继续只读保留，不移动、不删除、不改名。
+- 可见光和红外仍分别独立运行 COLMAP 与 3DGS 训练。
+- 夜间可见光优先使用单相机模型；发现混合分辨率后，保留原始 317 张，只新增标准尺寸过滤场景 `night_visible_4032_exhaustive`。
+- 夜间红外使用完整 317 张数据。
+- 训练仍使用单卡 GPU 0、官方 `--eval` 固定划分、监控指标 PSNR/SSIM/LPIPS 和质量下降早停规则。
+- 输出、COLMAP 中间结果和 PLY 大文件不纳入 Git。
+
+#### 只读探查结果
+
+- 本地夜间数据共 634 张 JPG：
+  - 可见光：317 张 `*_V.JPG`
+  - 红外：317 张 `*_T.JPG`
+- 夜间可见光图片尺寸分布：
+  - `4032x3024`：312 张
+  - `4091x3048`：2 张
+  - `3652x2739`：3 张
+  - 混合尺寸文件共 5 张，导致单相机 COLMAP 的 undistort 不能直接使用完整 317 张可见光图。
+- 夜间红外图片尺寸分布：
+  - `640x512`：317 张，全部一致。
+- 初始 `night_visible` sequential COLMAP 只注册 `3/317`，不适合作为训练输入。
+- `night_visible_exhaustive` 单相机 exhaustive COLMAP 找到主模型 `314/317`，但因 5 张可见光图片尺寸不一致，undistort 失败。
+- `night_visible_multicamera_exhaustive` 匹配阶段完成后在收尾阶段长时间不退出，已终止该尝试；其残留的 defunct `colmap` 进程不占用 CPU/GPU。
+- `night_visible_4032_exhaustive` 过滤场景使用 312 张标准尺寸图片，COLMAP 主模型注册 `312/312`。
+- 夜间红外 `night_thermal` sequential COLMAP 注册 `317/317`。
+
+#### 已完成
+
+- 已将夜间原始数据同步到服务器只读 raw 目录：
+  - `/home/pch/myGS/datasets/uav_3dgs/raw/night_visible`
+  - `/home/pch/myGS/datasets/uav_3dgs/raw/night_thermal`
+- 更新 `configs/scenes.env` 和 `scripts/common.sh`，新增夜间场景配置：
+  - `night_visible`
+  - `night_thermal`
+  - `night_visible_exhaustive`
+  - `night_visible_exhaustive_main`
+  - `night_visible_multicamera_exhaustive`
+  - `night_visible_4032_exhaustive`
+  - `night_thermal_exhaustive`
+- 新增夜间训练和监控入口：
+  - `scripts/run_night_visible_training.sh`
+  - `scripts/run_night_thermal_training.sh`
+  - `scripts/monitor_night_visible_training.sh`
+  - `scripts/monitor_night_thermal_training.sh`
+- 新增图片尺寸检查与过滤准备工具：
+  - `scripts/check_image_sizes.py`
+  - `scripts/prepare_dimension_filtered_dataset.py`
+  - `scripts/prepare_dimension_filtered_dataset.sh`
+- 修复 `scripts/run_colmap.sh`：
+  - 支持 `COLMAP_MATCHER=sequential|exhaustive`
+  - 支持 `COLMAP_IMAGE_READER_SINGLE_CAMERA`
+  - mapper 结束后自动选择注册图像最多的 sparse 子模型
+  - 修复 `model_analyzer` 输出在 stderr 时无法解析注册图像数的问题
+- 已准备夜间 processed 数据：
+  - `night_visible`：317/317
+  - `night_thermal`：317/317
+  - `night_visible_4032_exhaustive`：312/312，另外记录 5 张尺寸不匹配图片
+- 夜间可见光最终 COLMAP 输入：
+  - 场景：`night_visible_4032_exhaustive`
+  - 注册图像：`312/312`
+  - 点数：`144410`
+  - 平均重投影误差：`1.306119px`
+  - 最终输入目录：`/home/pch/myGS/datasets/uav_3dgs/processed/night_visible_4032_exhaustive/sparse/0`
+- 夜间红外最终 COLMAP 输入：
+  - 场景：`night_thermal`
+  - 注册图像：`317/317`
+  - 点数：`76251`
+  - 平均重投影误差：`0.534622px`
+  - 最终输入目录：`/home/pch/myGS/datasets/uav_3dgs/processed/night_thermal/sparse/0`
+- 夜间可见光 smoke run 已完成：
+  - run id：`smoke-20260710-181821`
+  - 最佳迭代：20
+  - PSNR `14.2510588`
+  - SSIM `0.6056988`
+  - LPIPS `0.5391956`
+- 夜间可见光正式训练已完成：
+  - run id：`20260710-182058`
+  - 输出目录：`/home/pch/myGS/outputs/night_visible_4032_exhaustive/20260710-182058`
+  - 日志：`/home/pch/myGS/logs/20260710-182058-train-night_visible_4032_exhaustive.log`
+  - 最终状态：`completed`
+  - 终止原因：`max_iterations`
+  - 最终迭代：15000
+  - 最佳迭代：15000
+- 夜间可见光正式训练质量记录如下，`quality_dropped` 均为 `0`：
+
+  | 迭代 | PSNR (dB) | SSIM | LPIPS |
+  | ---: | ---: | ---: | ---: |
+  | 5000 | 29.630284 | 0.908956 | 0.295233 |
+  | 6000 | 29.827225 | 0.911191 | 0.290735 |
+  | 7000 | 29.679143 | 0.910604 | 0.290097 |
+  | 8000 | 29.975887 | 0.913594 | 0.285540 |
+  | 9000 | 30.246260 | 0.915781 | 0.282694 |
+  | 10000 | 30.207314 | 0.915721 | 0.282743 |
+  | 11000 | 30.321542 | 0.916641 | 0.280308 |
+  | 12000 | 30.353902 | 0.917471 | 0.278937 |
+  | 13000 | 30.399372 | 0.917641 | 0.279443 |
+  | 14000 | 30.515811 | 0.918195 | 0.277351 |
+  | 15000 | 30.606217 | 0.919185 | 0.276280 |
+
+- 已将夜间可见光最佳 PLY 同步到本地：
+  - `F:\PCH\myGSproj\supersplat_ply\night_visible_4032_exhaustive_20260710-182058_best_iter15000_psnr30.6062_ssim0.9192_lpips0.2763.ply`
+- 已验证夜间可见光本地最佳 PLY：
+  - 文件大小：`169616915` 字节
+  - 与远端文件大小一致
+  - 文件头为 `ply`
+  - 顶点数：`683933`
+- 夜间红外 smoke run 已完成：
+  - run id：`smoke-20260711-032314`
+  - 最佳迭代：20
+  - PSNR `14.4579582`
+  - SSIM `0.3684515`
+  - LPIPS `0.6321233`
+- 夜间红外正式训练已完成：
+  - run id：`20260711-032435`
+  - 输出目录：`/home/pch/myGS/outputs/night_thermal/20260711-032435`
+  - 日志：`/home/pch/myGS/logs/20260711-032435-train-night_thermal.log`
+  - 最终状态：`early_stopped`
+  - 终止原因：`quality_drop`
+  - 最终迭代：13000
+  - 最佳迭代：12000
+- 夜间红外正式训练质量记录如下：
+
+  | 迭代 | PSNR (dB) | SSIM | LPIPS | quality_dropped |
+  | ---: | ---: | ---: | ---: | ---: |
+  | 5000 | 29.182803 | 0.911309 | 0.142584 | 0 |
+  | 6000 | 29.402601 | 0.914783 | 0.135747 | 0 |
+  | 7000 | 29.623863 | 0.917123 | 0.133849 | 0 |
+  | 8000 | 29.990282 | 0.922862 | 0.127758 | 0 |
+  | 9000 | 30.097429 | 0.924190 | 0.125038 | 0 |
+  | 10000 | 30.154621 | 0.925317 | 0.124815 | 0 |
+  | 11000 | 30.369370 | 0.927761 | 0.121450 | 0 |
+  | 12000 | 30.506569 | 0.929443 | 0.118911 | 0 |
+  | 13000 | 30.417089 | 0.928580 | 0.120481 | 1 |
+
+- 已将夜间红外最佳 PLY 同步到本地：
+  - `F:\PCH\myGSproj\supersplat_ply\night_thermal_20260711-032435_best_iter12000_psnr30.5066_ssim0.9294_lpips0.1189.ply`
+- 已验证夜间红外本地最佳 PLY：
+  - 文件大小：`268297852` 字节
+  - 与远端文件大小一致
+  - 文件头为 `ply`
+  - 顶点数：`1081840`
+- 原始数据目录未移动、未删除、未改名。
+
+#### 待执行
+
+- 用户在 SuperSplat 中打开两个夜间最佳 PLY，主观检查夜间可见光和夜间红外重建效果。
+- 提交并推送本次夜间脚本、测试、计划和任务日志。
+
+#### 下一步
+
+- 如果夜间可见光效果可接受，将 `night_visible_4032_exhaustive + 15000` 作为夜间可见光当前基线。
+- 如果夜间红外效果可接受，将 `night_thermal + 12000` 作为夜间红外当前基线。
+- 如需进一步提质，可再基于 SuperSplat 观察结果分别决定是否做夜间可见光高分辨率训练、红外更长训练或图像预处理实验。
